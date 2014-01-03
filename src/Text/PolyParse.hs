@@ -171,8 +171,6 @@ commit p = P $ \ inp adjE _fl sc -> runP p inp adjE failure sc
 failBad :: String -> Parser s a
 failBad = commit . fail
 
--- adjustErr and adjustErrBad need Failure to take a list of Strings I
--- think.
 
 next :: (ParseValue s) => Parser s (Token s)
 next = P $ \ inp adjE fl sc ->
@@ -214,12 +212,18 @@ reparse :: (ParseValue s) => s -> Parser s ()
 reparse s = P $ \ inp adjE _fl sc -> sc (s <> inp) adjE ()
 {-# INLINE reparse #-}
 
+-- -----------------------------------------------------------------------------
+-- Manipulating error messages
+
 adjustErr :: Parser s a -> (String -> String) -> Parser s a
 adjustErr p f = P $ \ inp adjE fl sc ->
                        runP p inp (adjE . f) fl sc
 
-addStackTrace :: String -> Parser s a -> Parser s a
-addStackTrace msg = (`adjustErr`((msg ++ "\n\t")++))
+adjustErrBad :: Parser s a -> (String -> String) -> Parser s a
+adjustErrBad = adjustErr . commit
 
--- Check adjE usage for onFail: the new failure one shouldn't use the
--- adjE from the success
+addStackTrace :: String -> Parser s a -> Parser s a
+addStackTrace msg = (`adjustErr`((msg++) . ('\n':) . indent 2))
+
+indent :: Int -> String -> String
+indent n = unlines . map (replicate n ' ' ++) . lines
