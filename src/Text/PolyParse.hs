@@ -171,6 +171,8 @@ commit p = P $ \ inp adjE _fl sc -> runP p inp adjE failure sc
 failBad :: String -> Parser s a
 failBad = commit . fail
 
+-- -----------------------------------------------------------------------------
+-- Combinators
 
 next :: (ParseValue s) => Parser s (Token s)
 next = P $ \ inp adjE fl sc ->
@@ -194,6 +196,10 @@ satisfy f = do
      else fail "Token did not satisfy predicate"
 {-# INLINE satisfy #-}
 
+oneOf :: [Parser s a] -> Parser s a
+oneOf = foldr (<|>) (fail "Failed to parse any of the possible choices")
+{-# INLINE oneOf #-}
+
 manySatisfy :: (ParseValue s) => (Token s -> Bool) -> Parser s s
 manySatisfy f = P $ \ inp adjE _fl sc ->
                   let (pre,suf) = breakWhen f inp
@@ -211,6 +217,23 @@ many1Satisfy f = P $ \ inp adjE fl sc ->
 reparse :: (ParseValue s) => s -> Parser s ()
 reparse s = P $ \ inp adjE _fl sc -> sc (s <> inp) adjE ()
 {-# INLINE reparse #-}
+
+-- -----------------------------------------------------------------------------
+-- Counting combinators
+
+exactly :: Int -> Parser s a -> Parser s [a]
+exactly n p = mapM toP $ enumFromThenTo n (n-1) 1
+  where
+    toP = (`addStackTrace` p) . msg
+    msg c = "Expecting precisely " ++ show c ++ "items."
+-- This shows that adjE stuff might not be working properly, as they
+-- all propagate through each other...
+
+upto :: Int -> Parser s a -> Parser s [a]
+upto n p = foldr go (pure []) $ replicate n p
+  where
+    -- Not taking argument as we _know_ it's `p'...
+    go _ lst = liftA2 (:) p lst <|> pure []
 
 -- -----------------------------------------------------------------------------
 -- Manipulating error messages
