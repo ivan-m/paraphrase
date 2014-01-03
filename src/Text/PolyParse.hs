@@ -90,8 +90,7 @@ runParser p inp = resultToEither $ runP p inp noAdj failure successful
 runParser' :: Parser s a -> s -> a
 runParser' p inp = case fst $ runParser p inp of
                      Right a  -> a
-                     Left err -> error err
-
+                     Left err -> error ('\n':err)
 
 -- -----------------------------------------------------------------------------
 -- Instances
