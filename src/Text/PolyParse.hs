@@ -215,11 +215,15 @@ eof = P $ \ inp adjE fl sc ->
 {-# INLINE eof #-}
 
 satisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s (Token s)
-satisfy f = do
-  x <- next
-  if f x
-     then return x
-     else fail "Token did not satisfy predicate"
+satisfy f = P $ \ inp adjE fl sc ->
+                  runP next inp adjE fl $
+                       \ inp' x ->
+                          if f x
+                             then sc inp' x
+                             else fl inp adjE "Token did not satisfy predicate"
+                                  -- Note: use /original/ input stream
+                                  -- when we fail, not the one with
+                                  -- the first token taken off!
 {-# INLINE satisfy #-}
 
 oneOf :: [Parser s a] -> Parser s a
