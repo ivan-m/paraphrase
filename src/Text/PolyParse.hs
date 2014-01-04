@@ -104,6 +104,7 @@ fmapP :: (a -> b) -> Parser s a -> Parser s b
 fmapP f pa = P $ \ inp adjE fl sc ->
                  runP pa inp adjE fl $ \ inp' a ->
                                           sc inp' (f a)
+{-# INLINE fmapP #-}
 
 instance Applicative (Parser s) where
   pure = returnP
@@ -195,6 +196,7 @@ commit p = P $ \ inp adjE _fl sc -> runP p inp adjE failure sc
 
 failBad :: String -> Parser s a
 failBad = commit . fail
+{-# INLINE failBad #-}
 
 -- -----------------------------------------------------------------------------
 -- Combinators
@@ -248,26 +250,31 @@ reparse s = P $ \ inp _adjE _fl sc -> sc (s <> inp) ()
 
 sepBy :: Parser s a -> Parser s sep -> Parser s [a]
 sepBy p sep = sepBy1 p sep <|> pure []
+{-# INLINE sepBy #-}
 
 sepBy1 :: Parser s a -> Parser s sep -> Parser s [a]
 sepBy1 p sep = addStackTrace "When looking for a non-empty sequence with separators"
                $ liftA2 (:) p (many (sep *> p))
+{-# INLINE sepBy1 #-}
 
 bracket :: Parser s bra -> Parser s ket -> Parser s a -> Parser s a
 bracket open close p = open' *> p <* close'
   where
     open'  = addStackTrace "Missing opening bracket:" open
     close' = addStackTrace "Missing closing bracket:" close
+{-# INLINE bracket #-}
 
 bracketSep :: Parser s bra -> Parser s sep -> Parser s ket
               -> Parser s a -> Parser s [a]
 bracketSep open sep close p = bracket open (commit close) (sepBy p sep)
+{-# INLINE bracketSep #-}
 
 manyFinally :: Parser s a -> Parser s z -> Parser s [a]
 manyFinally p t = (many p <* t)
                   <|> oneOf' [ ("sequence terminator",t *> pure [])
                              , ("item in a sequence", p *> pure [])
                              ]
+{-# INLINE manyFinally #-}
 
 manyFinally' :: Parser s a -> Parser s z -> Parser s [a]
 manyFinally' p t = go
@@ -278,7 +285,7 @@ manyFinally' p t = go
                         , ("item in a sequence", p *> pure [])
                         ]
                ]
-
+{-# INLINE manyFinally' #-}
 
 -- -----------------------------------------------------------------------------
 -- Counting combinators
@@ -288,25 +295,30 @@ exactly n p = mapM toP $ enumFromThenTo n (n-1) 1
   where
     toP = (`addStackTrace` p) . msg
     msg c = "Expecting precisely " ++ show c ++ " item(s)."
+{-# INLINE exactly #-}
 
 upto :: Int -> Parser s a -> Parser s [a]
 upto n p = foldr go (pure []) $ replicate n p
   where
     -- Not taking argument as we _know_ it's `p'...
     go _ lst = liftA2 (:) p lst <|> pure []
+{-# INLINE upto #-}
 
 -- -----------------------------------------------------------------------------
 -- Manipulating error messages
 
 failMessage :: String -> Parser s a -> Parser s a
 failMessage e = (`onFail` fail e)
+{-# INLINE failMessage #-}
 
 adjustErr :: Parser s a -> (String -> String) -> Parser s a
 adjustErr p f = P $ \ inp adjE fl sc ->
                        runP p inp (adjE . f) fl sc
+{-# INLINE adjustErr #-}
 
 adjustErrBad :: Parser s a -> (String -> String) -> Parser s a
 adjustErrBad = adjustErr . commit
+{-# INLINE adjustErrBad #-}
 
 addStackTrace :: String -> Parser s a -> Parser s a
 addStackTrace msg = (`adjustErr`((msg'++) . (('\n':line:marker)++)))
@@ -320,12 +332,15 @@ addStackTrace msg = (`adjustErr`((msg'++) . (('\n':line:marker)++)))
     line = '|'
     marker = "-> "
     markerLength = length marker
+{-# INLINE addStackTrace #-}
 
 indent :: Int -> String -> String
 indent n = unlines . map (indentLine n) . lines
+{-# INLINE indent #-}
 
 indentLine :: Int -> String -> String
 indentLine n = (replicate n ' ' ++)
+{-# INLINE indentLine #-}
 
 -- | As with 'oneOf', but each potential parser is tagged with a
 --   \"name\" for error reporting.  The process is as follows:
