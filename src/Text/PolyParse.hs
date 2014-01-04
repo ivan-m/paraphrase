@@ -156,7 +156,7 @@ bindP p f = P $ \ inp adjE fl sc -> runP p inp adjE fl $
 
 onFail :: Parser s a -> Parser s a -> Parser s a
 onFail p1 p2 = P $ \ inp adjE fl sc ->
-               let fl' inp' _adjE' _e = runP p2 inp' adjE fl sc
+               let fl' _inp' _adjE' _e = runP p2 inp adjE fl sc
                    sc' inp'           = sc inp'
                in runP p1 inp adjE fl' sc'
 {-# INLINE onFail #-}
