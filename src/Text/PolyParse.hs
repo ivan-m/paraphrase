@@ -202,10 +202,9 @@ failBad = commit . fail
 -- Combinators
 
 next :: (ParseInput s) => Parser s (Token s)
-next = P $ \ inp adjE fl sc ->
-             case uncons inp of
-               Nothing -> fl inp adjE "Ran out of input (EOF)"
-               Just (t,inp') -> sc inp' t
+next = P $ \ inp adjE fl sc -> maybe (fl inp adjE "Ran out of input (EOF)")
+                                     (uncurry $ flip sc)
+                                     (uncons inp)
 {-# INLINE next #-}
 
 eof :: (ParseInput s) => Parser s ()
