@@ -320,8 +320,16 @@ indentLine :: Int -> String -> String
 indentLine n = (replicate n ' ' ++)
 
 -- | As with 'oneOf', but each potential parser is tagged with a
---   \"name\" for error reporting.  Furthermore, if none of the
---   parsers succeed, then /all/ error messages are returned.
+--   \"name\" for error reporting.  The process is as follows:
+--
+--   * If a parser succeeds, return the result.
+--
+--   * If a severe error occurs (i.e. at some point @commit@ was
+--     used), return that.  Note that if a parser with a severe error
+--     is earlier in the list than a parser that would otherwise be
+--     successful, then the severe error is still thrown.
+--
+--   * Otherwise, return all error messages.
 oneOf' :: [(String,Parser s a)] -> Parser s a
 oneOf' = go id
   where
