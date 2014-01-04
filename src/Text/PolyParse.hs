@@ -275,6 +275,9 @@ upto n p = foldr go (pure []) $ replicate n p
 -- -----------------------------------------------------------------------------
 -- Manipulating error messages
 
+failMessage :: String -> Parser s a -> Parser s a
+failMessage e = (`onFail` fail e)
+
 adjustErr :: Parser s a -> (String -> String) -> Parser s a
 adjustErr p f = P $ \ inp adjE fl sc ->
                        runP p inp (adjE . f) fl sc
