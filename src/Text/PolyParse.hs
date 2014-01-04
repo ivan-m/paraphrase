@@ -246,7 +246,7 @@ adjustErrBad :: Parser s a -> (String -> String) -> Parser s a
 adjustErrBad = adjustErr . commit
 
 addStackTrace :: String -> Parser s a -> Parser s a
-addStackTrace msg = (`adjustErr`((msg++) . ('\n':) . indent 2))
+addStackTrace msg = (`adjustErr`((msg++) . ("\n|-> "++)))
 
 indent :: Int -> String -> String
 indent n = unlines . map (replicate n ' ' ++) . lines
