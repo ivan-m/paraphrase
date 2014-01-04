@@ -263,8 +263,6 @@ exactly n p = mapM toP $ enumFromThenTo n (n-1) 1
   where
     toP = (`addStackTrace` p) . msg
     msg c = "Expecting precisely " ++ show c ++ " item(s)."
--- This shows that adjE stuff might not be working properly, as they
--- all propagate through each other...
 
 upto :: Int -> Parser s a -> Parser s [a]
 upto n p = foldr go (pure []) $ replicate n p
