@@ -363,4 +363,4 @@ oneOf' = go id
           fl' _inp _adjE e = runP (go' e) inp adjE fl sc
       in runP p inp adjE fl' sc
 
-    showErr (nm,e) = nm ++ ":\n" ++ indent 2 e
+    showErr (nm,e) = "* " ++ nm ++ ":\n" ++ indent 4 e
