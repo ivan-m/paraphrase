@@ -219,6 +219,43 @@ reparse s = P $ \ inp _adjE _fl sc -> sc (s <> inp) ()
 {-# INLINE reparse #-}
 
 -- -----------------------------------------------------------------------------
+-- Separating/discarding combinators
+
+sepBy :: Parser s a -> Parser s sep -> Parser s [a]
+sepBy p sep = sepBy1 p sep <|> pure []
+
+sepBy1 :: Parser s a -> Parser s sep -> Parser s [a]
+sepBy1 p sep = addStackTrace "When looking for a non-empty sequence with separators"
+               $ liftA2 (:) p (many (sep *> p))
+
+bracket :: Parser s bra -> Parser s ket -> Parser s a -> Parser s a
+bracket open close p = open' *> p <* close'
+  where
+    open'  = addStackTrace "Missing opening bracket:" open
+    close' = addStackTrace "Missing closing bracket:" close
+
+bracketSep :: Parser s bra -> Parser s sep -> Parser s ket
+              -> Parser s a -> Parser s [a]
+bracketSep open sep close p = bracket open (commit close) (sepBy p sep)
+
+manyFinally :: Parser s a -> Parser s z -> Parser s [a]
+manyFinally p t = (many p <* t)
+                  <|> oneOf' [ ("sequence terminator",t *> pure [])
+                             , ("item in a sequence", p *> pure [])
+                             ]
+
+manyFinally' :: Parser s a -> Parser s z -> Parser s [a]
+manyFinally' p t = go
+  where
+    go = oneOf [ t *> pure []
+               , liftA2 (:) p go
+               , oneOf' [ ("sequence terminator",t *> pure [])
+                        , ("item in a sequence", p *> pure [])
+                        ]
+               ]
+
+
+-- -----------------------------------------------------------------------------
 -- Counting combinators
 
 exactly :: Int -> Parser s a -> Parser s [a]
@@ -263,3 +300,19 @@ indent n = unlines . map (indentLine n) . lines
 
 indentLine :: Int -> String -> String
 indentLine n = (replicate n ' ' ++)
+
+-- | As with 'oneOf', but each potential parser is tagged with a
+--   \"name\" for error reporting.  Furthermore, if none of the
+--   parsers succeed, then /all/ error messages are returned.
+oneOf' :: [(String,Parser s a)] -> Parser s a
+oneOf' = go id
+  where
+    go errs [] = fail $ "Failed to parse any of the possible choices:\n"
+                        ++ indent 2 (concatMap showErr (errs []))
+    -- Can't use <|> here as we want access to `e'.
+    go errs ((nm,p):ps) = P $ \ inp adjE fl sc ->
+      let go' e = go (errs . ((nm,e):)) ps
+          fl' _inp _adjE e = runP (go' e) inp adjE fl sc
+      in runP p inp adjE fl' sc
+
+    showErr (nm,e) = nm ++ ":\n" ++ indent 2 e
