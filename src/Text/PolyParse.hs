@@ -23,7 +23,7 @@ import qualified Data.Text.Lazy as T
 
 -- -----------------------------------------------------------------------------
 
-class (Monoid s) => ParseValue s where
+class (Monoid s) => ParseInput s where
 
   type Token s
 
@@ -36,7 +36,7 @@ class (Monoid s) => ParseValue s where
   -- | Split the stream where the predicate is no longer satisfied.
   breakWhen :: (Token s -> Bool) -> s -> (s,s)
 
-instance ParseValue [a] where
+instance ParseInput [a] where
   type Token [a] = a
 
   uncons []     = Nothing
@@ -191,21 +191,21 @@ failBad = commit . fail
 -- -----------------------------------------------------------------------------
 -- Combinators
 
-next :: (ParseValue s) => Parser s (Token s)
+next :: (ParseInput s) => Parser s (Token s)
 next = P $ \ inp adjE fl sc ->
              case uncons inp of
                Nothing -> fl inp adjE "Ran out of input (EOF)"
                Just (t,inp') -> sc inp' t
 {-# INLINE next #-}
 
-eof :: (ParseValue s) => Parser s ()
+eof :: (ParseInput s) => Parser s ()
 eof = P $ \ inp adjE fl sc ->
             if isEmpty inp
                then sc inp ()
                else fl inp adjE "Expected end of input (EOF)"
 {-# INLINE eof #-}
 
-satisfy :: (ParseValue s) => (Token s -> Bool) -> Parser s (Token s)
+satisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s (Token s)
 satisfy f = do
   x <- next
   if f x
@@ -217,13 +217,13 @@ oneOf :: [Parser s a] -> Parser s a
 oneOf = foldr (<|>) (fail "Failed to parse any of the possible choices")
 {-# INLINE oneOf #-}
 
-manySatisfy :: (ParseValue s) => (Token s -> Bool) -> Parser s s
+manySatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s s
 manySatisfy f = P $ \ inp _adjE _fl sc ->
                   let (pre,suf) = breakWhen f inp
                   in sc suf pre
 {-# INLINE manySatisfy #-}
 
-someSatisfy :: (ParseValue s) => (Token s -> Bool) -> Parser s s
+someSatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s s
 someSatisfy f = P $ \ inp adjE fl sc ->
                     let (pre,suf) = breakWhen f inp
                     in if isEmpty pre
@@ -231,7 +231,7 @@ someSatisfy f = P $ \ inp adjE fl sc ->
                           else sc suf pre
 {-# INLINE someSatisfy #-}
 
-reparse :: (ParseValue s) => s -> Parser s ()
+reparse :: (ParseInput s) => s -> Parser s ()
 reparse s = P $ \ inp _adjE _fl sc -> sc (s <> inp) ()
 {-# INLINE reparse #-}
 
