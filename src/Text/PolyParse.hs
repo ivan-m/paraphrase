@@ -111,10 +111,10 @@ instance Applicative (Parser s) where
   (<*>) = apP
   {-# INLINE (<*>) #-}
 
-  (*>) = (>>)
+  (*>) = ignFirstP
   {-# INLINE (*>) #-}
 
-  p1 <* p2 = p1 >>= \ a -> p2 >> return a
+  (<*) = discard
   {-# INLINE (<*) #-}
 
 instance Alternative (Parser s) where
@@ -128,21 +128,38 @@ instance Monad (Parser s) where
   return = returnP
   {-# INLINE return #-}
 
-  fail = failP
-  {-# INLINE fail #-}
-
   (>>=) = bindP
   {-# INLINE (>>=) #-}
+
+  (>>) = ignFirstP
+  {-# INLINE (>>) #-}
+
+  fail = failP
+  {-# INLINE fail #-}
 
 returnP :: a -> Parser s a
 returnP a = P $ \ inp _adjE _fl sc -> sc inp a
 {-# INLINE returnP #-}
 
+-- Explicit version of @pa >>= const pb@.
+ignFirstP :: Parser s a -> Parser s b -> Parser s b
+ignFirstP pa pb = P $ \ inp adjE fl sc ->
+                        runP pa inp adjE fl $ \ inp' _a ->
+                                                runP pb inp' adjE fl sc
+{-# INLINE ignFirstP #-}
+
+discard :: Parser s a -> Parser s b -> Parser s a
+discard pa pb = P $ \ inp adjE fl sc ->
+                  let sc' a inp' _b = sc inp' a
+                  in runP pa inp adjE fl $ \ inp' a ->
+                                              runP pb inp' adjE fl (sc' a)
+{-# INLINE discard #-}
+
 apP :: Parser s (a -> b) -> Parser s a -> Parser s b
-apP pf pa = do
-    f <- pf
-    a <- pa
-    return (f a)
+apP pf pa = P $ \ inp adjE fl sc ->
+                  runP pf inp adjE fl
+                       $ \ inp' f -> runP pa inp' adjE fl
+                                          $ \ inp'' a -> sc inp'' (f a)
 {-# INLINE apP #-}
 
 failP :: String -> Parser s a
