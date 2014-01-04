@@ -1,7 +1,0 @@
-`commit` sets a function used by `onFail` to choose between the
-original failure parser and the new one.
-
-That won't work: if a parser fails, running it in `onFail` will take
-the provided failure parser (which runs the other one).
-
-Need to do a way of not overriding it...
