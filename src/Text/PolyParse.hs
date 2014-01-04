@@ -73,7 +73,7 @@ newtype Parser s a = P {
 type ErrMsg = String
 type AdjErr = ErrMsg -> ErrMsg
 type Failure s   r = s -> AdjErr -> ErrMsg -> Result s r
-type Success s a r = s -> AdjErr -> a      -> Result s r
+type Success s a r = s           -> a      -> Result s r
 
 noAdj :: AdjErr
 noAdj = id
@@ -82,7 +82,7 @@ failure :: Failure s r
 failure s adjE e = Failure s (adjE e)
 
 successful :: Success s a a
-successful s _ = Success s
+successful = Success
 
 runParser :: Parser s a -> s -> (Either String a, s)
 runParser p inp = resultToEither $ runP p inp noAdj failure successful
@@ -101,8 +101,8 @@ instance Functor (Parser s) where
 
 fmapP :: (a -> b) -> Parser s a -> Parser s b
 fmapP f pa = P $ \ inp adjE fl sc ->
-                 runP pa inp adjE fl $ \ inp' adjE' a ->
-                                          sc inp' adjE' (f a)
+                 runP pa inp adjE fl $ \ inp' a ->
+                                          sc inp' (f a)
 
 instance Applicative (Parser s) where
   pure = returnP
@@ -135,7 +135,7 @@ instance Monad (Parser s) where
   {-# INLINE (>>=) #-}
 
 returnP :: a -> Parser s a
-returnP a = P $ \ inp adjE _fl sc -> sc inp adjE a
+returnP a = P $ \ inp _adjE _fl sc -> sc inp a
 {-# INLINE returnP #-}
 
 apP :: Parser s (a -> b) -> Parser s a -> Parser s b
@@ -151,13 +151,13 @@ failP e = P $ \ inp adjE fl _sc -> fl inp adjE e
 
 bindP ::  Parser s a -> (a -> Parser s b) -> Parser s b
 bindP p f = P $ \ inp adjE fl sc -> runP p inp adjE fl $
-                  \inp' adjE' a -> runP (f a) inp' adjE' fl sc
+                  \inp' a -> runP (f a) inp' adjE fl sc
 {-# INLINE bindP #-}
 
 onFail :: Parser s a -> Parser s a -> Parser s a
 onFail p1 p2 = P $ \ inp adjE fl sc ->
                let fl' inp' _adjE' _e = runP p2 inp' adjE fl sc
-                   sc' inp' adjE'    = sc inp' (adjE . adjE')
+                   sc' inp'           = sc inp'
                in runP p1 inp adjE fl' sc'
 {-# INLINE onFail #-}
 
@@ -178,13 +178,13 @@ next :: (ParseValue s) => Parser s (Token s)
 next = P $ \ inp adjE fl sc ->
              case uncons inp of
                Nothing -> fl inp adjE "Ran out of input (EOF)"
-               Just (t,inp') -> sc inp' adjE t
+               Just (t,inp') -> sc inp' t
 {-# INLINE next #-}
 
 eof :: (ParseValue s) => Parser s ()
 eof = P $ \ inp adjE fl sc ->
             if isEmpty inp
-               then sc inp adjE ()
+               then sc inp ()
                else fl inp adjE "Expected end of input (EOF)"
 {-# INLINE eof #-}
 
@@ -201,9 +201,9 @@ oneOf = foldr (<|>) (fail "Failed to parse any of the possible choices")
 {-# INLINE oneOf #-}
 
 manySatisfy :: (ParseValue s) => (Token s -> Bool) -> Parser s s
-manySatisfy f = P $ \ inp adjE _fl sc ->
+manySatisfy f = P $ \ inp _adjE _fl sc ->
                   let (pre,suf) = breakWhen f inp
-                  in sc suf adjE pre
+                  in sc suf pre
 {-# INLINE manySatisfy #-}
 
 many1Satisfy :: (ParseValue s) => (Token s -> Bool) -> Parser s s
@@ -211,11 +211,11 @@ many1Satisfy f = P $ \ inp adjE fl sc ->
                    let (pre,suf) = breakWhen f inp
                    in if isEmpty pre
                          then fl inp adjE "many1Satisfy: failed"
-                         else sc suf adjE pre
+                         else sc suf pre
 {-# INLINE many1Satisfy #-}
 
 reparse :: (ParseValue s) => s -> Parser s ()
-reparse s = P $ \ inp adjE _fl sc -> sc (s <> inp) adjE ()
+reparse s = P $ \ inp _adjE _fl sc -> sc (s <> inp) ()
 {-# INLINE reparse #-}
 
 -- -----------------------------------------------------------------------------
