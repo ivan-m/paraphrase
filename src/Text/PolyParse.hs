@@ -13,6 +13,7 @@
 module Text.PolyParse where
 
 import Control.Applicative
+import Control.Monad       (MonadPlus (..))
 import Data.Monoid
 
 -- Sources
@@ -136,6 +137,13 @@ instance Monad (Parser s) where
 
   fail = failP
   {-# INLINE fail #-}
+
+instance MonadPlus (Parser s) where
+  mzero = failP "mzero"
+  {-# INLINE mzero #-}
+
+  mplus = onFail
+  {-# INLINE mplus #-}
 
 returnP :: a -> Parser s a
 returnP a = P $ \ inp _adjE _fl sc -> sc inp a
