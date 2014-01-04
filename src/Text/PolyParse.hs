@@ -206,13 +206,13 @@ manySatisfy f = P $ \ inp _adjE _fl sc ->
                   in sc suf pre
 {-# INLINE manySatisfy #-}
 
-many1Satisfy :: (ParseValue s) => (Token s -> Bool) -> Parser s s
-many1Satisfy f = P $ \ inp adjE fl sc ->
-                   let (pre,suf) = breakWhen f inp
-                   in if isEmpty pre
-                         then fl inp adjE "many1Satisfy: failed"
-                         else sc suf pre
-{-# INLINE many1Satisfy #-}
+someSatisfy :: (ParseValue s) => (Token s -> Bool) -> Parser s s
+someSatisfy f = P $ \ inp adjE fl sc ->
+                    let (pre,suf) = breakWhen f inp
+                    in if isEmpty pre
+                          then fl inp adjE "someSatisfy: failed"
+                          else sc suf pre
+{-# INLINE someSatisfy #-}
 
 reparse :: (ParseValue s) => s -> Parser s ()
 reparse s = P $ \ inp _adjE _fl sc -> sc (s <> inp) ()
