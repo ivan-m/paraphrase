@@ -246,7 +246,20 @@ adjustErrBad :: Parser s a -> (String -> String) -> Parser s a
 adjustErrBad = adjustErr . commit
 
 addStackTrace :: String -> Parser s a -> Parser s a
-addStackTrace msg = (`adjustErr`((msg++) . ("\n|-> "++)))
+addStackTrace msg = (`adjustErr`((msg'++) . (('\n':line:marker)++)))
+  where
+    msg' = case lines msg of
+             [_]      -> msg
+             (ln:lns) -> unlines $ ln : map ind lns
+
+    ind = ('|':) . indentLine markerLength
+
+    line = '|'
+    marker = "-> "
+    markerLength = length marker
 
 indent :: Int -> String -> String
-indent n = unlines . map (replicate n ' ' ++) . lines
+indent n = unlines . map (indentLine n) . lines
+
+indentLine :: Int -> String -> String
+indentLine n = (replicate n ' ' ++)
