@@ -51,6 +51,7 @@ module Text.PolyParse
 
          -- * Error reporting
          -- ** Convenience functions
+         -- $stacktraces
        , failMessage
        , addStackTrace
        , addStackTraceBad
@@ -558,24 +559,26 @@ upto n p = foldr go (pure []) $ replicate n p
 -- -----------------------------------------------------------------------------
 -- Manipulating error messages
 
+{- $stacktraces
+
+For adding informative error messages to your parsers, whilst it is
+possible to just use the lower-level combinators listed below, it is
+highly recommended that you just use the combinators listed here.
+
+These provide a more convenient \"wrapper\" ability to add onto your
+parsers, and also provide some basic pretty-printing to make it easier
+to follow the trail of errors.
+
+These combinators are already used in some of the combinators defined
+in this library.
+
+-}
+
 -- | A convenient combinator to specify what the error message of a
 --   combinator should be.
 failMessage :: String -> Parser s a -> Parser s a
 failMessage e = (`onFail` fail e)
 {-# INLINE failMessage #-}
-
--- | Apply the transformation function on any error messages that
---   might arise from the provided parser.
-adjustErr :: Parser s a -> (String -> String) -> Parser s a
-adjustErr p f = P $ \ inp adjE fl sc ->
-                       runP p inp (adjE . f) fl sc
-{-# INLINE adjustErr #-}
-
--- | As with 'adjustErr', but also raises the severity (same
---   relationship as between 'failBad' and 'fail').
-adjustErrBad :: Parser s a -> (String -> String) -> Parser s a
-adjustErrBad = adjustErr . commit
-{-# INLINE adjustErrBad #-}
 
 -- | A convenient function to produce (reasonably) pretty stack traces
 --   for parsing failures.
@@ -592,6 +595,19 @@ addStackTrace msg = (`adjustErr`((msg'++) . (('\n':stackTracePoint)++)))
 addStackTraceBad :: String -> Parser s a -> Parser s a
 addStackTraceBad msg = addStackTraceBad msg . commit
 {-# INLINE addStackTraceBad #-}
+
+-- | Apply the transformation function on any error messages that
+--   might arise from the provided parser.
+adjustErr :: Parser s a -> (String -> String) -> Parser s a
+adjustErr p f = P $ \ inp adjE fl sc ->
+                       runP p inp (adjE . f) fl sc
+{-# INLINE adjustErr #-}
+
+-- | As with 'adjustErr', but also raises the severity (same
+--   relationship as between 'failBad' and 'fail').
+adjustErrBad :: Parser s a -> (String -> String) -> Parser s a
+adjustErrBad = adjustErr . commit
+{-# INLINE adjustErrBad #-}
 
 stackTraceMarker :: String
 stackTraceMarker = "-> "
