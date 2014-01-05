@@ -58,6 +58,7 @@ module Text.PolyParse
        , adjustErrBad
        , indent
        , indentLine
+       , allButFirstLine
        , oneOf'
 
        -- * Re-exported for extra combinators
@@ -205,7 +206,9 @@ noAdj = id
 -- Dum... Dum... Dum... DUMMMMMM!!!  The parsing has gone all wrong,
 -- so apply the error-message adjustment and stop doing anything.
 failure :: Failure s r
-failure s adjE e = Failure s (adjE e)
+failure s adjE e = Failure s (adjE $ indMsg e)
+  where
+    indMsg = allButFirstLine (indent lenStackTracePoint)
 
 -- Hooray!  We're all done here, and a job well done!
 successful :: Success s a a
@@ -576,18 +579,36 @@ adjustErrBad = adjustErr . commit
 -- | A convenient function to produce (reasonably) pretty stack traces
 --   for parsing failures.
 addStackTrace :: String -> Parser s a -> Parser s a
-addStackTrace msg = (`adjustErr`((msg'++) . (('\n':line:marker)++)))
+addStackTrace msg = (`adjustErr`((msg'++) . (('\n':stackTracePoint)++)))
   where
-    msg' = case lines msg of
-             [_]      -> msg
-             (ln:lns) -> unlines $ ln : map ind lns
+    msg' = allButFirstLine ind msg
 
-    ind = ('|':) . indentLine markerLength
-
-    line = '|'
-    marker = "-> "
-    markerLength = length marker
+    ind = (stackTraceLine:) . indentLine lenStackTraceMarker
 {-# INLINE addStackTrace #-}
+
+stackTraceMarker :: String
+stackTraceMarker = "-> "
+
+lenStackTraceMarker :: Int
+lenStackTraceMarker = length stackTraceMarker
+
+stackTraceLine :: Char
+stackTraceLine = '|'
+
+stackTracePoint :: String
+stackTracePoint = stackTraceLine : stackTraceMarker
+
+lenStackTracePoint :: Int
+lenStackTracePoint = length stackTracePoint
+
+-- | Map a function over all but the first line of text.  Useful when
+--   you want all subsequent lines indented.
+allButFirstLine :: (String -> String) -> String -> String
+allButFirstLine f msg = case lines msg of
+                          [_]      -> msg
+                          (ln:lns) -> unlines $ ln : map f lns
+                          _        -> msg
+{-# INLINE allButFirstLine #-}
 
 -- | A convenience function for use with 'adjustErr' useful for
 --   formatting error messages; indents /all/ lines by a fixed amount.
