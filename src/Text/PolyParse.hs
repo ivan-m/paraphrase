@@ -46,6 +46,8 @@ module Text.PolyParse
          -- ** Counting
        , exactly
        , upto
+         -- ** Chaining parsers
+       , chainParsers
 
          -- * Error reporting
          -- ** Convenience functions
@@ -59,9 +61,10 @@ module Text.PolyParse
        , oneOf'
        ) where
 
-import Control.Applicative
-import Control.Monad       (MonadPlus (..))
-import Data.Monoid
+import           Control.Applicative
+import qualified Control.Category    as Cat
+import           Control.Monad       (MonadPlus (..))
+import           Data.Monoid
 
 -- Sources
 {-
@@ -271,6 +274,39 @@ instance MonadPlus (Parser s) where
 
   mplus = onFail
   {-# INLINE mplus #-}
+
+-- | No further input should be consumed from the @id@ definition (as
+--   it returns all input).
+instance Cat.Category Parser where
+  id = allInputP
+  {-# INLINE id #-}
+
+  (.) = chainParsers
+  {-# INLINE (.) #-}
+
+-- ALL THE INPUTZ!!!
+allInputP :: Parser s s
+allInputP = P $ \ inp _adjE _fl sc -> sc (error "No more input to consume.") inp
+{-# INLINE allInputP #-}
+
+-- | @chainParsers pt ps@ will parse the input with @ps@ and then
+--   parse the result of that parse with @pt@.  Control (and remaining
+--   original input) is returned to the caller.
+--
+--   @pt@ is /not/ assumed to consume all of its input (and any
+--   remaining input is discarded).  If this is required, use @pt <*
+--   'eof'@.  Similarly if @ps@ is meant to consume all input.
+--
+--   This function is identical to @'(Cat..)'@ and @'(Cat.<<<)'@ from
+--   "Control.Category".
+chainParsers :: Parser t a -> Parser s t -> Parser s a
+chainParsers pt ps = P $ \ inpS adjE fl sc ->
+                           runP ps inpS adjE fl $ \ inpS' inpT ->
+                                case parseInput pt inpT of
+                                  Success _ a -> sc inpS' a
+                                  Failure _ e -> fl inpS' adjE e
+{-# INLINE chainParsers #-}
+
 
 returnP :: a -> Parser s a
 returnP a = P $ \ inp _adjE _fl sc -> sc inp a

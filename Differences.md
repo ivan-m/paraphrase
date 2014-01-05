@@ -42,6 +42,12 @@ which this document attempts to catalogue:
     - `many1Finally` is known as `someFinally` (in line with `some`
       instead of `many1`) and is now available for all input types.
 
+    - The exception to this is that `chainParsers` is re-exported
+      despite being identical to `(.)` and `(<<<)` from
+      `[Control.Category]`; this is primarily for documentation
+      purposes (but also in case people prefer not to use the
+      `Category` instance).
+
 4. More in-built support for creating a "stack-trace" of error
    messages for when parsers fail.
 
@@ -62,3 +68,5 @@ which this document attempts to catalogue:
 [attoparsec]: http://hackage.haskell.org/package/attoparsec
 
 [transformers]: http://hackage.haskell.org/package/transformers
+
+[Control.Category]: http://www.haskell.org/ghc/docs/latest/html/libraries/base/Control-Category.html
