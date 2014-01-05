@@ -177,6 +177,40 @@ newtype Parser s a = P {
        -> Result  s   r
   }
 
+{-
+
+How the parser works
+--------------------
+
+Traditionally, the way a parser works has been "bottom-up": a
+sub-parser is evaluated, returning a @Result@ value; if it fails do
+one thing, if it succeeds do another.
+
+Instead, for this parser the caller specifies what the sub-parser
+should do if it reaches a failure or when it succeeds.
+
+Since function composition/calling is more efficient than continually
+doing comparisons on data types, this results in _speed_!
+
+In terms of usage, this is completely opaque to the user of the
+parsing library: they are not specifically asked for any functions for
+dealing with success or failure, etc.
+
+Constructing a low-level parser typically looks like:
+
+> ... = P $ \ inp adjE fl sc -> ...
+              |   |    |  |
+              |   |    |  |
+              |   |    |  \-- What to do on a successful parse.
+              |   |    |
+              |   |    \----- What to do if the parse isn't successful.
+              |   |
+              |   \---------- Function to apply on error messages.
+              |
+              \-------------- Input to the parser.
+
+-}
+
 -- An alias for internal purposes to signify what a 'String' input
 -- means.
 --
