@@ -21,6 +21,9 @@ which this document attempts to catalogue:
       is defined in each parsing module (as its type could not be
       specified on a class basis).
 
+    - As a consequence of this, you may need to provide explicit
+      type-signatures for parsers.
+
 2. The implementation is based upon `[attoparsec]` and as such is
    CPS-based rather than constantly comparing against a `Result`
    value.  This may some implications in terms of how some combinators
