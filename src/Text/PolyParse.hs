@@ -53,6 +53,7 @@ module Text.PolyParse
          -- ** Convenience functions
        , failMessage
        , addStackTrace
+       , addStackTraceBad
          -- ** Low-level error adjustment
        , adjustErr
        , adjustErrBad
@@ -585,6 +586,12 @@ addStackTrace msg = (`adjustErr`((msg'++) . (('\n':stackTracePoint)++)))
 
     ind = (stackTraceLine:) . indentLine lenStackTraceMarker
 {-# INLINE addStackTrace #-}
+
+-- | As with 'addStackTrace' but raise the severity of the error (same
+--   relationship as between 'failBad' and 'fail').
+addStackTraceBad :: String -> Parser s a -> Parser s a
+addStackTraceBad msg = addStackTraceBad msg . commit
+{-# INLINE addStackTraceBad #-}
 
 stackTraceMarker :: String
 stackTraceMarker = "-> "
