@@ -60,9 +60,10 @@ module Text.PolyParse
        , indentLine
        , oneOf'
 
-       -- * Re-exported modules for extra combinators
+       -- * Re-exported for extra combinators
        , module Control.Applicative
-       , module Control.Category
+       , (Cat.>>>)
+       , (Cat.<<<)
        ) where
 
 import           Control.Applicative
