@@ -491,8 +491,8 @@ bracket open close p = open' *> p <* close'
     close' = addStackTrace "Missing closing bracket:" close
 {-# INLINE bracket #-}
 
--- | Parse a list of items, discarding the start, end and separator
---   items.
+-- | Parse a (possibly empty) list of items, discarding the start, end
+--   and separator items.
 --
 --   Note that 'commit' is applied to the end parser, otherwise it may
 --   be difficult to track down errors.
