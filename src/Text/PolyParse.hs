@@ -351,7 +351,6 @@ chainParsers pt ps = P $ \ inpS adjE fl sc ->
                                   Failure _ e -> fl inpS' adjE e
 {-# INLINE chainParsers #-}
 
-
 returnP :: a -> Parser s a
 returnP a = P $ \ inp _adjE _fl sc -> sc inp a
 {-# INLINE returnP #-}
@@ -386,7 +385,7 @@ failP e = P $ \ inp adjE fl _sc -> fl inp adjE e
 bindP ::  Parser s a -> (a -> Parser s b) -> Parser s b
 bindP p f = P $ \ inp adjE fl sc -> runP p inp adjE fl $
                  -- Get the new parser and run it.
-                  \inp' a -> runP (f a) inp' adjE fl sc
+                  \ inp' a -> runP (f a) inp' adjE fl sc
 {-# INLINE bindP #-}
 
 onFail :: Parser s a -> Parser s a -> Parser s a
