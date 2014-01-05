@@ -16,6 +16,7 @@ module Text.PolyParse
        ( -- * The parser
          Parser
          -- ** Running parsers
+       , parseInput
        , runParser
        , runParser'
          -- ** Parsing results
@@ -202,9 +203,14 @@ failure s adjE e = Failure s (adjE e)
 successful :: Success s a a
 successful = Success
 
+-- | Run the parser on the provided input, providing the raw 'Result'
+--   value.
+parseInput :: Parser s a -> s -> Result s a
+parseInput p inp = runP p inp noAdj failure successful
+
 -- | Run a parser.
 runParser :: Parser s a -> s -> (Either String a, s)
-runParser p inp = resultToEither $ runP p inp noAdj failure successful
+runParser = (resultToEither .) . parseInput
 
 -- | Run a parser, assuming it succeeds.  If the parser fails, use
 --   'error' to display the message.
