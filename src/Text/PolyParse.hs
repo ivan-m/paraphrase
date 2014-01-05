@@ -498,7 +498,8 @@ bracket open close p = open' *> p <* close'
 --   be difficult to track down errors.
 bracketSep :: Parser s bra -> Parser s sep -> Parser s ket
               -> Parser s a -> Parser s [a]
-bracketSep open sep close p = bracket open (commit close) (sepBy p sep)
+bracketSep open sep close p = addStackTrace "Bracketed list of separated items:"
+                              $ bracket open (commit close) (sepBy p sep)
 -- Original polyparse implementation differs.
 {-# INLINE bracketSep #-}
 
@@ -507,10 +508,11 @@ bracketSep open sep close p = bracket open (commit close) (sepBy p sep)
 --   could be due to either of these parsers not succeeding, both
 --   possible errors are raised.
 manyFinally :: Parser s a -> Parser s z -> Parser s [a]
-manyFinally p t = (many p <* t)
-                  <|> oneOf' [ ("sequence terminator",t *> pure [])
-                             , ("item in a sequence", p *> pure [])
-                             ]
+manyFinally p t = addStackTrace "In a list of items with a terminator:"
+                  ((many p <* t)
+                   <|> oneOf' [ ("sequence terminator",t *> pure [])
+                              , ("item in a sequence", p *> pure [])
+                              ])
 {-# INLINE manyFinally #-}
 
 -- | As with 'manyFinally', but handles the case where the terminator
@@ -521,7 +523,7 @@ manyFinally p t = (many p <* t)
 --   If there's no risk of overlap between the two parsers, you should
 --   probably use 'manyFinally'.
 manyFinally' :: Parser s a -> Parser s z -> Parser s [a]
-manyFinally' p t = go
+manyFinally' p t = addStackTrace "In a list of items with a terminator:" go
   where
     go = oneOf [ t *> pure []
                , liftA2 (:) p go
