@@ -63,6 +63,21 @@ which this document attempts to catalogue:
    will only have an impact on the possible error messages returned if
    parsing fails.
 
+8. `polyparse-next` isn't as lazy and doesn't support partial parsing;
+   that is, whereas in `polyaprse` the parser:
+
+    ~~~ {.haskell"
+    runParser (exactly 5 (satisfy (<5))) [(1::Int)..]
+    ~~~
+
+    will start to return the first four elements of the list before
+    reporting the error, the equivalent in `polyparse-next` will not
+    return the partial output and will just throw an error.
+
+    It seems at this stage that this is not something that can be
+    achieved with the current implementation due to success being an
+    all-or-nothing affair.
+
 [polyparse]: http://hackage.haskell.org/package/polyparse
 
 [attoparsec]: http://hackage.haskell.org/package/attoparsec
