@@ -209,6 +209,10 @@ Constructing a low-level parser typically looks like:
               |
               \-------------- Input to the parser.
 
+Note that the 'AdjErr' argument is at the top-level of the parser
+rather than directly manipulating the arguments to the 'Failure'
+function due to how 'commit' works.
+
 -}
 
 -- An alias for internal purposes to signify what a 'String' input
