@@ -330,7 +330,7 @@ adjustErrBad = adjustErr . commit
 --
 --   * If a parser succeeds, return the result.
 --
---   * If a severe error occurs (i.e. at some point @commit@ was
+--   * If a severe error occurs (i.e. at some point 'commit' was
 --     used), return that.  Note that if a parser with a severe error
 --     is earlier in the list than a parser that would otherwise be
 --     successful, then the severe error is still thrown.
