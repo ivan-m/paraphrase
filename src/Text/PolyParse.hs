@@ -347,7 +347,9 @@ oneOf' = go id
       let go' e = go (errs . ((nm,e):)) ps
           -- When we fail (and the parser isn't committed), recurse
           -- and try the next parser whilst saving the error message.
-          fl' _inp _adjE e = runP (go' e) inp adjE fl sc
-      in runP p inp adjE fl' sc
+          fl' _inp adjE' e = runP (go' $ adjE' e) inp adjE fl sc
+      in runP p inp noAdj fl' sc
+         -- Note: we only consider the AdjErr from the provided
+         -- parser, not the global one.
 
     showErr (nm,e) = "* " ++ nm ++ ":\n" ++ indent 4 e
