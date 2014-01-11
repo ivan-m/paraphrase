@@ -221,9 +221,11 @@ bracketSep open sep close p = addStackTrace "Bracketed list of separated items:"
 --   possible errors are raised.
 manyFinally :: Parser s a -> Parser s z -> Parser s [a]
 manyFinally p t = addStackTrace "In a list of items with a terminator:"
-                  ((many p <* t)
-                   <|> oneOf' [ ("sequence terminator",t *> pure [])
-                              , ("item in a sequence", p *> pure [])
+                  ( many p
+                    -- If t succeeds, then it will do so here.
+                    -- Otherwise, better error reporting!
+                    <* oneOf' [ ("sequence terminator",t *> pure ())
+                              , ("item in a sequence", p *> pure ())
                               ])
 {-# INLINE manyFinally #-}
 
