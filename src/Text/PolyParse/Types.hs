@@ -136,16 +136,20 @@ dealing with success or failure, etc.
 
 Constructing a low-level parser typically looks like:
 
-> ... = P $ \ inp adjE fl sc -> ...
-              |   |    |  |
-              |   |    |  |
-              |   |    |  \-- What to do on a successful parse.
-              |   |    |
-              |   |    \----- What to do if the parse isn't successful.
+> ... = P $ \ inp add mr adjE fl sc -> ...
+              |   |   |  |    |  |
+              |   |   |  |    |  |
+              |   |   |  |    |  \-- What to do on a successful parse.
+              |   |   |  |    |
+              |   |   |  |    \----- What to do if the parse isn't successful.
+              |   |   |  |
+              |   |   |  \---------- Function to apply on error messages.
+              |   |   |
+              |   |   \------------- Whether we are accepting any more input.
               |   |
-              |   \---------- Function to apply on error messages.
+              |   \----------------- Any additional input we have received so far.
               |
-              \-------------- Input to the parser.
+              \--------------------- Input to the parser.
 
 Note that the 'AdjErr' argument is at the top-level of the parser
 rather than directly manipulating the arguments to the 'Failure'
