@@ -32,7 +32,8 @@ Coding conventions.
   predicates; just use @f@ instead.
 
 See also the provided conventions for referring to values of type
-'ErrMsg', 'AdjustErr', 'Failure' and 'Success'.
+'Input', 'Additional', 'More', 'ErrMsg', 'AdjErr', 'Failure' and
+'Success'.
 
  -}
 
