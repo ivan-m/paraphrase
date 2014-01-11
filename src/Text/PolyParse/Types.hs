@@ -270,33 +270,6 @@ instance Applicative (Parser s) where
   (<*) = discard
   {-# INLINE (<*) #-}
 
-instance (ParseInput s) => Alternative (Parser s) where
-  empty = failP "empty"
-  {-# INLINE empty #-}
-
-  (<|>) = onFail
-  {-# INLINE (<|>) #-}
-
-instance Monad (Parser s) where
-  return = returnP
-  {-# INLINE return #-}
-
-  (>>=) = bindP
-  {-# INLINE (>>=) #-}
-
-  (>>) = ignFirstP
-  {-# INLINE (>>) #-}
-
-  fail = failP
-  {-# INLINE fail #-}
-
-instance (ParseInput s) => MonadPlus (Parser s) where
-  mzero = failP "mzero"
-  {-# INLINE mzero #-}
-
-  mplus = onFail
-  {-# INLINE mplus #-}
-
 returnP :: a -> Parser s a
 returnP a = P $ \ inp add mr _adjE _fl sc -> sc inp add mr a
 {-# INLINE returnP #-}
@@ -324,15 +297,12 @@ apP pf pa = P $ \ inp add mr adjE fl sc ->
                                           $ \ inp'' add'' mr'' a -> sc inp'' add'' mr'' (f a)
 {-# INLINE apP #-}
 
-failP :: String -> Parser s a
-failP e = P $ \ inp add mr adjE fl _sc -> fl inp add mr adjE e
-{-# INLINE failP #-}
+instance (ParseInput s) => Alternative (Parser s) where
+  empty = failP "empty"
+  {-# INLINE empty #-}
 
-bindP ::  Parser s a -> (a -> Parser s b) -> Parser s b
-bindP p f = P $ \ inp add mr adjE fl sc -> runP p inp add mr adjE fl $
-                 -- Get the new parser and run it.
-                  \ inp' add' mr' a -> runP (f a) inp' add' mr' adjE fl sc
-{-# INLINE bindP #-}
+  (<|>) = onFail
+  {-# INLINE (<|>) #-}
 
 onFail :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
 onFail p1 p2 = P $ \ inp add mr adjE fl sc ->
@@ -354,6 +324,36 @@ onFail p1 p2 = P $ \ inp add mr adjE fl sc ->
                  -- may get from running @p1@.
                   \ inp' add' mr' -> runP p1 inp' add' mr' adjE fl' sc'
 {-# INLINE onFail #-}
+
+instance Monad (Parser s) where
+  return = returnP
+  {-# INLINE return #-}
+
+  (>>=) = bindP
+  {-# INLINE (>>=) #-}
+
+  (>>) = ignFirstP
+  {-# INLINE (>>) #-}
+
+  fail = failP
+  {-# INLINE fail #-}
+
+failP :: String -> Parser s a
+failP e = P $ \ inp add mr adjE fl _sc -> fl inp add mr adjE e
+{-# INLINE failP #-}
+
+bindP ::  Parser s a -> (a -> Parser s b) -> Parser s b
+bindP p f = P $ \ inp add mr adjE fl sc -> runP p inp add mr adjE fl $
+                 -- Get the new parser and run it.
+                  \ inp' add' mr' a -> runP (f a) inp' add' mr' adjE fl sc
+{-# INLINE bindP #-}
+
+instance (ParseInput s) => MonadPlus (Parser s) where
+  mzero = failP "mzero"
+  {-# INLINE mzero #-}
+
+  mplus = onFail
+  {-# INLINE mplus #-}
 
 -- -----------------------------------------------------------------------------
 -- Incremental support
