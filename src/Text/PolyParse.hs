@@ -62,18 +62,14 @@ module Text.PolyParse
        , allButFirstLine
        , oneOf'
 
-       -- * Re-exported for extra combinators
+         -- * Re-exported for extra combinators
        , module Control.Applicative
-       , (Cat.>>>)
-       , (Cat.<<<)
        ) where
 
 import Text.PolyParse.TextManipulation
 import Text.PolyParse.Types
 
-import           Control.Applicative
-import qualified Control.Category    as Cat
-
+import Control.Applicative
 import Data.Monoid
 
 -- Sources
@@ -91,11 +87,11 @@ import qualified Data.Text.Lazy as LT
 --   That is, @commit p1 <|> p2@ is equivalent to just @p1@ (though
 --   also preventing any other usage of '(<|>)' that might occur).
 commit :: Parser s a -> Parser s a
-commit p = P $ \ inp adjE _fl sc ->
+commit p = P $ \ inp add mr adjE _fl sc ->
                  -- We commit by prohibiting external sources from
                  -- overriding our failure function (by just ignoring
                  -- provided Failure values).
-                 runP p inp adjE failure sc
+                 runP p inp add mr adjE failure sc
 {-# INLINE commit #-}
 
 -- | A combination of 'fail' and 'commit': specify a failure that
@@ -113,8 +109,9 @@ next = P $ \ inp add mr adjE fl sc -> maybe (fl inp add mr adjE "Ran out of inpu
                                      -- Note that when we fail, we use
                                      -- the /original/ input (even
                                      -- though it's empty).
-                                     (uncurry $ flip sc)
-                                     (uncons inp)
+                                     (\ (t,inp') -> sc (I inp') add mr t)
+                                     -- Doesn't take into account getting additional input!
+                                     (uncons (unI inp))
 {-# INLINE next #-}
 
 -- | This parser succeeds if we've reached the end of our input, and
@@ -129,19 +126,19 @@ endOfInput = P $ \ inp add mr adjE fl sc ->
 -- | Return the next token from our input if it satisfies the given
 --   predicate.
 satisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s (Token s)
-satisfy f = P $ \ inp adjE fl sc ->
-                  runP next inp adjE fl $
-                       \ inp' x ->
+satisfy f = P $ \ inp add mr adjE fl sc ->
+                  runP next inp add mr adjE fl $
+                       \ inp' add' mr' x ->
                           if f x
-                             then sc inp' x
-                             else fl inp adjE "Token did not satisfy predicate"
+                             then sc inp' add' mr' x
+                             else fl inp add mr adjE "Token did not satisfy predicate"
                                   -- Note: use /original/ input stream
                                   -- when we fail, not the one with
                                   -- the first token taken off!
 {-# INLINE satisfy #-}
 
 -- | Return the result of the first parser in the list that succeeds.
-oneOf :: [Parser s a] -> Parser s a
+oneOf :: (ParseInput s) => [Parser s a] -> Parser s a
 oneOf = foldr (<|>) (fail "Failed to parse any of the possible choices")
 {-# INLINE oneOf #-}
 
@@ -149,20 +146,21 @@ oneOf = foldr (<|>) (fail "Failed to parse any of the possible choices")
 --   This is a more efficient (and possibly fused) version of
 --   @'many' (satisfy p)@.
 manySatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s s
-manySatisfy f = P $ \ inp _adjE _fl sc ->
-                  let (pre,suf) = breakWhen f inp
-                  in sc suf pre
+manySatisfy f = P $ \ inp add mr _adjE _fl sc ->
+                  let (pre,suf) = breakWhen f (unI inp)
+                  -- Need to consider getting more input to break
+                  in sc (I suf) add mr pre
 {-# INLINE manySatisfy #-}
 
 -- | Parse as many tokens that satisfy the predicate as possible, but
 --   require at least one.  This is a more efficient (and possibly
 --   fused) version of @'some' (satisfy p)@.
 someSatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s s
-someSatisfy f = P $ \ inp adjE fl sc ->
-                    let (pre,suf) = breakWhen f inp
+someSatisfy f = P $ \ inp add mr adjE fl sc ->
+                    let (pre,suf) = breakWhen f (unI inp)
                     in if isEmpty pre
-                          then fl inp adjE "someSatisfy: failed"
-                          else sc suf pre
+                          then fl inp add mr adjE "someSatisfy: failed"
+                          else sc (I suf) add mr pre
 {-# INLINE someSatisfy #-}
 
 -- | Push some tokens back onto the front of the input stream ready
@@ -172,19 +170,19 @@ someSatisfy f = P $ \ inp adjE fl sc ->
 --   expand it, and push the expanded version back onto the stream
 --   ready to parse normally.
 reparse :: (ParseInput s) => s -> Parser s ()
-reparse s = P $ \ inp _adjE _fl sc -> sc (s <> inp) ()
+reparse s = P $ \ inp add mr _adjE _fl sc -> sc (I s <> inp) add mr ()
 {-# INLINE reparse #-}
 
 -- -----------------------------------------------------------------------------
 -- Separating/discarding combinators
 
 -- | Parse a list of items separated by discarded junk.
-sepBy :: Parser s a -> Parser s sep -> Parser s [a]
+sepBy :: (ParseInput s) => Parser s a -> Parser s sep -> Parser s [a]
 sepBy p sep = sepBy1 p sep <|> pure []
 {-# INLINE sepBy #-}
 
 -- | Parse a non-empty list of items separated by discarded junk.
-sepBy1 :: Parser s a -> Parser s sep -> Parser s [a]
+sepBy1 :: (ParseInput s) => Parser s a -> Parser s sep -> Parser s [a]
 sepBy1 p sep = addStackTrace "When looking for a non-empty sequence with separators:"
                $ liftA2 (:) p (many (sep *> p))
 {-# INLINE sepBy1 #-}
@@ -196,7 +194,7 @@ sepBy1 p sep = addStackTrace "When looking for a non-empty sequence with separat
 --   @'(<|>)'@ may lead to confusion as to why it failed.  As such,
 --   you may wish to consider applying the 'commit' combinator onto
 --   the close parser.
-bracket :: Parser s bra -> Parser s ket -> Parser s a -> Parser s a
+bracket :: (ParseInput s) => Parser s bra -> Parser s ket -> Parser s a -> Parser s a
 bracket open close p = open' *> p <* close'
   where
     open'  = addStackTrace "Missing opening bracket:" open
@@ -208,7 +206,7 @@ bracket open close p = open' *> p <* close'
 --
 --   Note that 'commit' is applied to the end parser, otherwise it may
 --   be difficult to track down errors.
-bracketSep :: Parser s bra -> Parser s sep -> Parser s ket
+bracketSep :: (ParseInput s) => Parser s bra -> Parser s sep -> Parser s ket
               -> Parser s a -> Parser s [a]
 bracketSep open sep close p = addStackTrace "Bracketed list of separated items:"
                               $ bracket open (commit close) (sepBy p sep)
@@ -219,7 +217,7 @@ bracketSep open sep close p = addStackTrace "Bracketed list of separated items:"
 --   terminated by a @t@ (which is discarded).  As parsing failures
 --   could be due to either of these parsers not succeeding, both
 --   possible errors are raised.
-manyFinally :: Parser s a -> Parser s z -> Parser s [a]
+manyFinally :: (ParseInput s) => Parser s a -> Parser s z -> Parser s [a]
 manyFinally p t = addStackTrace "In a list of items with a terminator:"
                   ( many p
                     -- If t succeeds, then it will do so here.
@@ -239,7 +237,7 @@ manyFinally p t = addStackTrace "In a list of items with a terminator:"
 --
 --   Note that this combinator raises a severe (i.e. it uses 'commit')
 --   error if
-manyFinally' :: Parser s a -> Parser s z -> Parser s [a]
+manyFinally' :: (ParseInput s) => Parser s a -> Parser s z -> Parser s [a]
 manyFinally' p t = addStackTrace "In a list of items with a terminator:" go
   where
     go =     (t *> pure [])
@@ -263,7 +261,7 @@ exactly n p = mapM toP $ enumFromThenTo n (n-1) 1
 {-# INLINE exactly #-}
 
 -- | @upto n p@ will return a list of no more than @n@ values.
-upto :: Int -> Parser s a -> Parser s [a]
+upto :: (ParseInput s) => Int -> Parser s a -> Parser s [a]
 upto n p = foldr go (pure []) $ replicate n p
   where
     -- There's probably a nicer way of writing this, but I can't think
@@ -273,6 +271,28 @@ upto n p = foldr go (pure []) $ replicate n p
     -- replicate to get the number right.
     go _ lst = liftA2 (:) p lst <|> pure []
 {-# INLINE upto #-}
+
+-- -----------------------------------------------------------------------------
+-- Chaining
+
+-- | @chainParsers pt ps@ will parse the input with @ps@ and then
+--   parse the result of that parse with @pt@.  Control (and remaining
+--   original input) is returned to the caller.
+--
+--   @pt@ is /not/ assumed to consume all of its input (and any
+--   remaining input is discarded).  If this is required, use @pt <*
+--   'endOfInput'@.  Similarly if @ps@ is meant to consume all input.
+--
+--   This function is identical to @'(Cat..)'@ and @'(Cat.<<<)'@ from
+--   "Control.Category".
+chainParsers :: (ParseInput t) => Parser t a -> Parser s t -> Parser s a
+chainParsers pt ps = P $ \ inpS addS mrS adjE fl sc ->
+                           runP ps inpS addS mrS adjE fl $
+                             \ inpS' addS' mrS' inpT ->
+                                case parseInput pt inpT of
+                                  Success _ a -> sc inpS' addS' mrS' a
+                                  Failure _ e -> fl inpS' addS' mrS' adjE e
+{-# INLINE chainParsers #-}
 
 -- -----------------------------------------------------------------------------
 -- Manipulating error messages
@@ -294,7 +314,7 @@ in this library.
 
 -- | A convenient combinator to specify what the error message of a
 --   combinator should be.
-failMessage :: String -> Parser s a -> Parser s a
+failMessage :: (ParseInput s) => String -> Parser s a -> Parser s a
 failMessage e = (`onFail` fail e)
 {-# INLINE failMessage #-}
 
@@ -317,8 +337,8 @@ addStackTraceBad msg = addStackTraceBad msg . commit
 -- | Apply the transformation function on any error messages that
 --   might arise from the provided parser.
 adjustErr :: Parser s a -> (String -> String) -> Parser s a
-adjustErr p f = P $ \ inp adjE fl sc ->
-                       runP p inp (adjE . f) fl sc
+adjustErr p f = P $ \ inp add mr adjE fl sc ->
+                       runP p inp add mr (adjE . f) fl sc
 {-# INLINE adjustErr #-}
 
 -- | As with 'adjustErr', but also raises the severity (same
@@ -338,20 +358,22 @@ adjustErrBad = adjustErr . commit
 --     successful, then the severe error is still thrown.
 --
 --   * Otherwise, return all error messages.
-oneOf' :: [(String,Parser s a)] -> Parser s a
+oneOf' :: (ParseInput s) => [(String,Parser s a)] -> Parser s a
 oneOf' = go id
   where
     go errs [] = fail $ "Failed to parse any of the possible choices:\n"
                         ++ indent 2 (concatMap showErr (errs []))
     -- Can't use <|> here as we want access to `e'.  Otherwise this is
     -- pretty much a duplicate of onFail.
-    go errs ((nm,p):ps) = P $ \ inp adjE fl sc ->
+    go errs ((nm,p):ps) = P $ \ inp add mr adjE fl sc ->
       let go' e = go (errs . ((nm,e):)) ps
           -- When we fail (and the parser isn't committed), recurse
           -- and try the next parser whilst saving the error message.
-          fl' _inp adjE' e = runP (go' $ adjE' e) inp adjE fl sc
-      in runP p inp noAdj fl' sc
-         -- Note: we only consider the AdjErr from the provided
-         -- parser, not the global one.
+          fl' inp' add' mr' adjE' e = mergeIncremental inp add mr inp' add' mr' $
+            \ inp'' add'' mr'' -> runP (go' $ adjE' e) inp'' add'' mr'' adjE fl sc
+      in ignoreAdditional inp add mr $
+           -- Note: we only consider the AdjErr from the provided
+           -- parser, not the global one.
+           \ inp' add' mr' -> runP p inp' add' mr' noAdj fl' sc
 
     showErr (nm,e) = "* " ++ nm ++ ":\n" ++ indent 4 e ++ "\n"
