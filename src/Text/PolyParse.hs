@@ -352,4 +352,4 @@ oneOf' = go id
          -- Note: we only consider the AdjErr from the provided
          -- parser, not the global one.
 
-    showErr (nm,e) = "* " ++ nm ++ ":\n" ++ indent 4 e
+    showErr (nm,e) = "* " ++ nm ++ ":\n" ++ indent 4 e ++ "\n"

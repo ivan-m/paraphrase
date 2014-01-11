@@ -10,6 +10,8 @@
  -}
 module Text.PolyParse.TextManipulation where
 
+import Data.List (intercalate)
+
 -- -----------------------------------------------------------------------------
 
 stackTraceMarker :: String
@@ -30,7 +32,7 @@ lenStackTracePoint = length stackTracePoint
 -- | A convenience function for use with 'adjustErr' useful for
 --   formatting error messages; indents /all/ lines by a fixed amount.
 indent :: Int -> String -> String
-indent n = unlines . map (indentLine n) . lines
+indent n = unlines' . map (indentLine n) . lines
 {-# INLINE indent #-}
 
 -- | As with 'indent' but assumes the error message is a single line.
@@ -43,6 +45,9 @@ indentLine n = (replicate n ' ' ++)
 allButFirstLine :: (String -> String) -> String -> String
 allButFirstLine f msg = case lines msg of
                           [_]      -> msg
-                          (ln:lns) -> unlines $ ln : map f lns
+                          (ln:lns) -> unlines' $ ln : map f lns
                           _        -> msg
 {-# INLINE allButFirstLine #-}
+
+unlines' :: [String] -> String
+unlines' = intercalate "\n"
