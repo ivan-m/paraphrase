@@ -17,7 +17,8 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Text.PolyParse
-  -- other-modules:
+  other-modules:         Text.PolyParse.Types
+                       , Text.PolyParse.TextManipulation
   -- other-extensions:
   build-depends:         base >=4.6 && <4.7
                        , text
