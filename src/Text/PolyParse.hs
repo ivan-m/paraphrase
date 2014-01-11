@@ -341,7 +341,8 @@ oneOf' = go id
   where
     go errs [] = fail $ "Failed to parse any of the possible choices:\n"
                         ++ indent 2 (concatMap showErr (errs []))
-    -- Can't use <|> here as we want access to `e'.
+    -- Can't use <|> here as we want access to `e'.  Otherwise this is
+    -- pretty much a duplicate of onFail.
     go errs ((nm,p):ps) = P $ \ inp adjE fl sc ->
       let go' e = go (errs . ((nm,e):)) ps
           -- When we fail (and the parser isn't committed), recurse
