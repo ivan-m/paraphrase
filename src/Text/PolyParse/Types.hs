@@ -88,7 +88,15 @@ instance ParseInput [a] where
 --   traces, etc.) if so desired.
 data Result s a = Success s a
                 | Failure s AdjustError String
+                | Partial AdjustError (s -> Result s a)
+                  -- ^ Indicates that the parser requires more input
+                  --   to continue.
+                  --
+                  --   The 'AdjustError' is for use with
+                  --   'resultToEither' and can be safely ignored in
+                  --   your own code.
 
+-- | Nonsensical for 'Failure' and 'Partial'.
 instance (Show s, Show a) => Show (Result s a) where
   showsPrec d r = showParen (d > 10) $
                     case r of
@@ -102,10 +110,15 @@ instance (Show s, Show a) => Show (Result s a) where
                                           . shows adjE
                                           . showString " "
                                           . shows e
+                      Partial adjE _p  -> showString "Partial "
+                                          . shows adjE
+                                          . showString " "
+                                          . showString "\"<continuation>\""
 
 instance Functor (Result s) where
   fmap f (Success s a)      = Success s (f a)
   fmap _ (Failure s adjE e) = Failure s adjE e
+  fmap f (Partial adjE cnt) = Partial adjE (fmap f . cnt)
 
 -- | A transformation on an error message to get any additional
 --   messages provided by combinators (e.g. to provide a stack trace).
@@ -125,9 +138,11 @@ instance Show AdjustError where
 type EitherResult a = Either (AdjustError, String) a
 
 -- | Convert the result into an 'Either' value.
-resultToEither :: Result s a -> (EitherResult a, s)
-resultToEither (Success s a)      = (Right a, s)
-resultToEither (Failure s adjE e) = (Left (adjE,e), s)
+resultToEither :: (ParseInput s) => Result s a -> (EitherResult a, s)
+resultToEither (Success s a)       = (Right a, s)
+resultToEither (Failure s adjE e)  = (Left (adjE,e), s)
+resultToEither (Partial adjE _cnt) = let e = "More input required."
+                                     in (Left (adjE,e),mempty)
 
 -- -----------------------------------------------------------------------------
 -- Parser definition
