@@ -27,7 +27,7 @@ module Text.PolyParse
          -- * Parser combinators
        , next
        , satisfy
-       , eof
+       , endOfInput
        , oneOf
        , bracket
        , reparse
@@ -109,7 +109,7 @@ failBad = commit . fail
 
 -- | Return the next token from the input source.
 next :: (ParseInput s) => Parser s (Token s)
-next = P $ \ inp adjE fl sc -> maybe (fl inp adjE "Ran out of input (EOF)")
+next = P $ \ inp add mr adjE fl sc -> maybe (fl inp add mr adjE "Ran out of input")
                                      -- Note that when we fail, we use
                                      -- the /original/ input (even
                                      -- though it's empty).
@@ -118,14 +118,13 @@ next = P $ \ inp adjE fl sc -> maybe (fl inp adjE "Ran out of input (EOF)")
 {-# INLINE next #-}
 
 -- | This parser succeeds if we've reached the end of our input, and
---   fails otherwise.  \"eof\" is short for "end of file", and the
---   term is used primarily for historical reasons.
-eof :: (ParseInput s) => Parser s ()
-eof = P $ \ inp adjE fl sc ->
-            if isEmpty inp
-               then sc inp ()
-               else fl inp adjE "Expected end of input (EOF)"
-{-# INLINE eof #-}
+--   fails otherwise.
+endOfInput :: (ParseInput s) => Parser s ()
+endOfInput = P $ \ inp add mr adjE fl sc ->
+                   if isEmpty (unI inp)
+                      then sc inp add mr ()
+                      else fl inp add mr adjE "Expected end of input"
+{-# INLINE endOfInput #-}
 
 -- | Return the next token from our input if it satisfies the given
 --   predicate.
