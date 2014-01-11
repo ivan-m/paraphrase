@@ -20,7 +20,10 @@ module Text.PolyParse
        , runParser'
          -- ** Parsing results
        , Result (..)
+       , AdjustError
+       , adjustError
        , resultToEither
+       , EitherResult
          -- ** Parser input
        , ParseInput (..)
 
@@ -286,12 +289,14 @@ upto n p = foldr go (pure []) $ replicate n p
 --   This function is identical to @'(Cat..)'@ and @'(Cat.<<<)'@ from
 --   "Control.Category".
 chainParsers :: (ParseInput t) => Parser t a -> Parser s t -> Parser s a
-chainParsers pt ps = P $ \ inpS addS mrS adjE fl sc ->
-                           runP ps inpS addS mrS adjE fl $
-                             \ inpS' addS' mrS' inpT ->
-                                case parseInput pt inpT of
-                                  Success _ a -> sc inpS' addS' mrS' a
-                                  Failure _ e -> fl inpS' addS' mrS' adjE e
+chainParsers pt ps
+   = P $ \ inpS addS mrS adjE fl sc ->
+         runP ps inpS addS mrS adjE fl $
+           \ inpS' addS' mrS' inpT ->
+              case parseInput pt inpT of
+                Success _ a        -> sc inpS' addS' mrS' a
+                Failure _ adjErr e -> let adjE' = adjE . adjustError adjErr
+                                      in fl inpS' addS' mrS' adjE' e
 {-# INLINE chainParsers #-}
 
 -- -----------------------------------------------------------------------------

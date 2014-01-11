@@ -82,18 +82,52 @@ instance ParseInput [a] where
 -- | The possible results from running a parser on some input,
 --   parametrised on the input source @s@.  The remaining input is
 --   also returned.
+--
+--   The @Failure@ case contains the bare error message as well as the
+--   function that will produce any additional error messages (stack
+--   traces, etc.) if so desired.
 data Result s a = Success s a
-                | Failure s String
-                deriving (Eq, Ord, Show, Read)
+                | Failure s AdjustError String
+
+instance (Show s, Show a) => Show (Result s a) where
+  showsPrec d r = showParen (d > 10) $
+                    case r of
+                      Success s a       -> showString "Success "
+                                           . shows s
+                                           . showString " "
+                                           . shows a
+                      Failure s adjE e -> showString "Failure "
+                                          . shows s
+                                          . showString " "
+                                          . shows adjE
+                                          . showString " "
+                                          . shows e
 
 instance Functor (Result s) where
-  fmap f (Success s a) = Success s (f a)
-  fmap _ (Failure s e) = Failure s e
+  fmap f (Success s a)      = Success s (f a)
+  fmap _ (Failure s adjE e) = Failure s adjE e
+
+-- | A transformation on an error message to get any additional
+--   messages provided by combinators (e.g. to provide a stack trace).
+newtype AdjustError = AE { adjustError :: String -> String
+                           -- ^ Adjust an error message to obtain any
+                           --   additional stack traces, etc. that may
+                           --   be available.
+                         }
+
+-- | A nonsensical definition just to allow data types containing this
+--   value to have valid @Show@ instances.
+instance Show AdjustError where
+  show _ = "\"<AdjustError>\""
+
+-- | A convenience alias for use with 'resultToEither' to avoid having
+--   to type the entire type out.
+type EitherResult a = Either (AdjustError, String) a
 
 -- | Convert the result into an 'Either' value.
-resultToEither :: Result s a -> (Either String a, s)
-resultToEither (Success s a) = (Right a, s)
-resultToEither (Failure s e) = (Left e, s)
+resultToEither :: Result s a -> (EitherResult a, s)
+resultToEither (Success s a)      = (Right a, s)
+resultToEither (Failure s adjE e) = (Left (adjE,e), s)
 
 -- -----------------------------------------------------------------------------
 -- Parser definition
@@ -220,8 +254,9 @@ noAdj = id
 -- Dum... Dum... Dum... DUMMMMMM!!!  The parsing has gone all wrong,
 -- so apply the error-message adjustment and stop doing anything.
 failure :: Failure s r
-failure inp _add _mr adjE e = Failure (unI inp) (adjE $ indMsg e)
+failure inp _add _mr adjE e = Failure (unI inp) addE' e
   where
+    addE' = AE $ adjE . indMsg
     indMsg = allButFirstLine (indent lenStackTracePoint)
 
 -- Hooray!  We're all done here, and a job well done!
@@ -234,7 +269,8 @@ parseInput :: (ParseInput s) => Parser s a -> s -> Result s a
 parseInput p inp = runP p (I inp) mempty Incomplete noAdj failure successful
 
 -- | Run a parser.
-runParser :: (ParseInput s) => Parser s a -> s -> (Either String a, s)
+runParser :: (ParseInput s) => Parser s a -> s
+             -> (EitherResult a, s)
 runParser p inp = resultToEither
                     (runP p (I inp) mempty Complete noAdj failure successful)
 
@@ -242,8 +278,8 @@ runParser p inp = resultToEither
 --   'error' to display the message.
 runParser' :: (ParseInput s) => Parser s a -> s -> a
 runParser' p inp = case fst $ runParser p inp of
-                     Right a  -> a
-                     Left err -> error ('\n':err)
+                     Right a       -> a
+                     Left (adjE,e) -> error ('\n' : adjustError adjE e)
 
 -- -----------------------------------------------------------------------------
 -- Instances
