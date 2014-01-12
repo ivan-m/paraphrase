@@ -108,14 +108,16 @@ failBad = commit . fail
 
 -- | Return the next token from the input source.
 next :: (ParseInput s) => Parser s (Token s)
-next = P $ \ inp add mr adjE fl sc -> maybe (fl inp add mr adjE "Ran out of input")
-                                     -- Note that when we fail, we use
-                                     -- the /original/ input (even
-                                     -- though it's empty).
-                                     (\ (t,inp') -> sc (I inp') add mr t)
-                                     -- Doesn't take into account getting additional input!
-                                     (uncons (unI inp))
+next = needAtLeast 1
+       *> P (\ inp add mr adjE fl sc -> maybe (fl inp add mr adjE "Ran out of input")
+                                        -- Note that when we fail, we
+                                        -- use the /original/ input
+                                        -- (even though it's empty).
+                                        (\ (t,inp') -> sc (I inp') add mr t)
+                                        (uncons (unI inp)))
 {-# INLINE next #-}
+
+-- TODO: test if we actually need uncons to return a Maybe now...
 
 -- | This parser succeeds if we've reached the end of our input, and
 --   fails otherwise.

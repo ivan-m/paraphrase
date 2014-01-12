@@ -60,6 +60,9 @@ class (Monoid s) => ParseInput s where
   -- | Is the input empty?
   isEmpty :: s -> Bool
 
+  -- | Do we have at least @n@ tokens available?
+  lengthAtLeast :: s -> Int -> Bool
+
   -- | Split the stream where the predicate is no longer satisfied
   --   (that is, the @fst@ component contains the largest possible
   --   prefix where all values satisfy the predicate, and the @snd@
@@ -73,6 +76,8 @@ instance ParseInput [a] where
   uncons (a:as) = Just (a,as)
 
   isEmpty = null
+
+  lengthAtLeast as n = not . null . drop (n-1) $ as
 
   breakWhen = span
 
@@ -428,3 +433,35 @@ mergeIncremental inp1 add1 mr1 _inp2 add2 mr2 f =
 ignoreAdditional :: (Monoid s) => WithIncremental s (WithIncremental s r -> r)
 ignoreAdditional inp _add mr f = f inp mempty mr
 {-# INLINE ignoreAdditional #-}
+
+-- | Make sure that there are at least @n@ 'Token's available.
+needAtLeast :: (ParseInput s) => Int -> Parser s ()
+needAtLeast !n = go
+  where
+    go = P $ \ inp add mr adjE fl sc ->
+      if lengthAtLeast (unI inp) n
+         then sc inp add mr ()
+         else runP (needMoreInput *> go) inp add mr adjE fl sc
+
+-- | Request more input.
+needMoreInput :: (ParseInput s) => Parser s ()
+needMoreInput = P $ \ inp add mr adjE fl sc ->
+  if mr == Complete
+     then fl inp add mr adjE "Not enough input."
+     else let fl' inp' add' mr' = fl inp' add' mr' adjE "Not enough input."
+              sc' inp' add' mr' = sc inp' add' mr' ()
+          in requestInput inp add mr adjE fl' sc'
+
+-- | Construct a 'Partial' 'Result' with a continuation function that
+--   will use the first provided function if it fails, and the second
+--   if it succeeds.
+requestInput :: (ParseInput s) =>
+                WithIncremental s
+                  ( AdjErr
+                    -> WithIncremental s (Result s r) -- Failure case
+                    -> WithIncremental s (Result s r) -- Success case
+                    -> Result s r)
+requestInput inp add _mr adjE fl sc = Partial (AE adjE) $ \ s ->
+  if isEmpty s
+     then fl inp add Complete
+     else sc (inp <> I s) (add <> A s) Incomplete
