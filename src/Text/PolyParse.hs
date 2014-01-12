@@ -87,8 +87,8 @@ import qualified Data.Text.Lazy as LT
 -- | Prevent any backtracking from taking place by emphasising that
 --   any failures from this parser are more severe than usual.
 --
---   That is, @commit p1 <|> p2@ is equivalent to just @p1@ (though
---   also preventing any other usage of '(<|>)' that might occur).
+--   That is, @commit p1 \<|\> p2@ is equivalent to just @p1@ (though
+--   also preventing any other usage of @'<|>'@ that might occur).
 commit :: Parser s a -> Parser s a
 commit p = P $ \ inp add mr adjE _fl sc ->
                  -- We commit by prohibiting external sources from
@@ -146,8 +146,8 @@ oneOf = foldr (<|>) (fail "Failed to parse any of the possible choices")
 {-# INLINE oneOf #-}
 
 -- | Parse as many tokens that satisfy the predicate as possible.
---   This is a more efficient (and possibly fused) version of
---   @'many' (satisfy p)@.
+--   This is a more efficient (and possibly fused) version of @'many'
+--   ('satisfy' p)@.
 manySatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s s
 manySatisfy f = P $ \ inp add mr _adjE _fl sc ->
                   let (pre,suf) = breakWhen f (unI inp)
@@ -157,7 +157,7 @@ manySatisfy f = P $ \ inp add mr _adjE _fl sc ->
 
 -- | Parse as many tokens that satisfy the predicate as possible, but
 --   require at least one.  This is a more efficient (and possibly
---   fused) version of @'some' (satisfy p)@.
+--   fused) version of @'some' ('satisfy' p)@.
 someSatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s s
 someSatisfy f = P $ \ inp add mr adjE fl sc ->
                     let (pre,suf) = breakWhen f (unI inp)
@@ -194,7 +194,7 @@ sepBy1 p sep = addStackTrace "When looking for a non-empty sequence with separat
 --
 --   Note that if the opening and item parsers succeed but the closing
 --   parser fails, the entire combinator will fail and usage of
---   @'(<|>)'@ may lead to confusion as to why it failed.  As such,
+--   @'<|>'@ may lead to confusion as to why it failed.  As such,
 --   you may wish to consider applying the 'commit' combinator onto
 --   the close parser.
 bracket :: (ParseInput s) => Parser s bra -> Parser s ket -> Parser s a -> Parser s a
@@ -239,7 +239,9 @@ manyFinally p t = addStackTrace "In a list of items with a terminator:"
 --   probably use 'manyFinally'.
 --
 --   Note that this combinator raises a severe (i.e. it uses 'commit')
---   error if
+--   error if the element parser succeeds at least once but then
+--   neither the element parser nor the termination parser succeed
+--   after that.
 manyFinally' :: (ParseInput s) => Parser s a -> Parser s z -> Parser s [a]
 manyFinally' p t = addStackTrace "In a list of items with a terminator:" go
   where
@@ -283,11 +285,8 @@ upto n p = foldr go (pure []) $ replicate n p
 --   original input) is returned to the caller.
 --
 --   @pt@ is /not/ assumed to consume all of its input (and any
---   remaining input is discarded).  If this is required, use @pt <*
+--   remaining input is discarded).  If this is required, use @pt '<*'
 --   'endOfInput'@.  Similarly if @ps@ is meant to consume all input.
---
---   This function is identical to @'(Cat..)'@ and @'(Cat.<<<)'@ from
---   "Control.Category".
 chainParsers :: (ParseInput t) => Parser t a -> Parser s t -> Parser s a
 chainParsers pt ps
    = P $ \ inpS addS mrS adjE fl sc ->
@@ -305,8 +304,8 @@ chainParsers pt ps
 {- $stacktraces
 
 For adding informative error messages to your parsers, whilst it is
-possible to just use the lower-level combinators listed below, it is
-highly recommended that you just use the combinators listed here.
+possible to use the lower-level combinators listed below, it is highly
+recommended that you just use the combinators listed here.
 
 These provide a more convenient \"wrapper\" ability to add onto your
 parsers, and also provide some basic pretty-printing to make it easier

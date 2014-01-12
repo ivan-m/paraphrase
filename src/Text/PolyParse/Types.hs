@@ -51,7 +51,7 @@ See also the provided conventions for referring to values of type
 --   need to examine the methods of this class.
 class (Monoid s) => ParseInput s where
 
-  -- | The elements of this
+  -- | The elements of this input type.
   type Token s
 
   -- | Attempt to extract the first token.
@@ -238,6 +238,7 @@ instance Monoid More where
 
   mappend c@Complete _ = c
   mappend _          m = m
+
 -- An alias for internal purposes to signify what a 'String' input
 -- means.
 --
