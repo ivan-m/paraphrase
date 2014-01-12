@@ -325,8 +325,12 @@ failMessage e = (`onFail` fail e)
 -- | A convenient function to produce (reasonably) pretty stack traces
 --   for parsing failures.
 addStackTrace :: String -> Parser s a -> Parser s a
-addStackTrace msg = (`adjustErr`((msg'++) . (('\n':stackTracePoint)++)))
+addStackTrace msg = (`adjustErr` adjE)
   where
+    adjE = (msg'++) . (('\n':stackTraceLine:'\n':stackTracePoint)++)
+
+    -- Need to do this so that when the next error message is added,
+    -- it will be indented properly.
     msg' = allButFirstLine ind msg
 
     ind = (stackTraceLine:) . indentLine lenStackTraceMarker
