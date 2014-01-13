@@ -294,15 +294,28 @@ upto n p = foldr go (pure []) $ replicate n p
 --   @pt@ is /not/ assumed to consume all of its input (and any
 --   remaining input is discarded).  If this is required, use @pt '<*'
 --   'endOfInput'@.  Similarly if @ps@ is meant to consume all input.
+--
+--   Note that @ps@ will run completely and obtain its entire output
+--   before passing it on to @pt@ rather than letting @pt@ consume it
+--   lazily.
 chainParsers :: (ParseInput t) => Parser t a -> Parser s t -> Parser s a
 chainParsers pt ps
    = P $ \ inpS addS mrS adjE fl sc ->
          runP ps inpS addS mrS adjE fl $
            \ inpS' addS' mrS' inpT ->
-              case parseInput pt inpT of
-                Success _ a        -> sc inpS' addS' mrS' a
-                Failure _ adjErr e -> let adjE' = adjE . adjustError adjErr
-                                      in fl inpS' addS' mrS' adjE' e
+              -- We need to explicitly run the parser and use a case
+              -- statement, as the types for the failure and success
+              -- cases won't match if we just use runP.
+              --
+              -- ps will deal with getting more input, so we don't
+              -- have to worry about that here, hence why it's safe to
+              -- use runParser.
+              case fst $ runParser pt' inpT of
+                Right a         -> sc inpS' addS' mrS' a
+                Left (adjErr,e) -> let adjE' = adjE . adjustError adjErr
+                                   in fl inpS' addS' mrS' adjE' e
+  where
+    pt' = addStackTrace "Running chained parser:" pt
 {-# INLINE chainParsers #-}
 
 -- -----------------------------------------------------------------------------
