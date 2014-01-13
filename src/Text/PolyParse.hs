@@ -263,11 +263,12 @@ manyFinally' p t = addStackTrace "In a list of items with a terminator:" go
 -- Counting combinators
 
 -- | Run the provided parser the specified number of times.
+--
+--   The behaviour is identical to that of 'replicateM' but with
+--   better error messages.
 exactly :: Int -> Parser s a -> Parser s [a]
 exactly n p = mapM toP $ enumFromThenTo n (n-1) 1
   where
-    -- Actually, @exactly == replicateM@, but this way we get nicer
-    -- error messages.
     toP = (`addStackTrace` p) . msg
     msg c = "Expecting precisely " ++ show c ++ " item(s)."
 {-# INLINE exactly #-}
