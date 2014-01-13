@@ -151,21 +151,26 @@ oneOf = foldr (<|>) (fail "Failed to parse any of the possible choices")
 --   This is a more efficient (and possibly fused) version of @'many'
 --   ('satisfy' p)@.
 manySatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s s
-manySatisfy f = P $ \ inp add mr _adjE _fl sc ->
-                  let (pre,suf) = breakWhen f (unI inp)
-                  -- Need to consider getting more input to break
-                  in sc (I suf) add mr pre
+manySatisfy f = go
+  where
+    go = P $ \ inp add mr adjE fl sc ->
+      let (pre,suf) = breakWhen f (unI inp)
+      in if (isEmpty suf && mr /= Complete)
+            then runP (needMoreInput *> go) inp add mr adjE fl sc
+            else sc (I suf) add mr pre
 {-# INLINE manySatisfy #-}
+
+-- TODO: consider splitting and merging rather than continually
+-- requesting input then re-breaking.
 
 -- | Parse as many tokens that satisfy the predicate as possible, but
 --   require at least one.  This is a more efficient (and possibly
 --   fused) version of @'some' ('satisfy' p)@.
 someSatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s s
-someSatisfy f = P $ \ inp add mr adjE fl sc ->
-                    let (pre,suf) = breakWhen f (unI inp)
-                    in if isEmpty pre
-                          then fl inp add mr adjE "someSatisfy: failed"
-                          else sc (I suf) add mr pre
+someSatisfy f = do r <- manySatisfy f
+                   if isEmpty r
+                      then fail "someSatisfy: failed"
+                      else return r
 {-# INLINE someSatisfy #-}
 
 -- | Push some tokens back onto the front of the input stream ready
