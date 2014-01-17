@@ -15,6 +15,7 @@ module Text.PolyParse.Types where
 import Text.PolyParse.TextManipulation
 
 import Control.Applicative
+import Control.DeepSeq     (NFData (rnf))
 import Control.Monad       (MonadPlus (..))
 import Data.Monoid
 
@@ -126,6 +127,11 @@ instance Functor (Result s) where
   fmap _ (Failure s adjE e) = Failure s adjE e
   fmap f (Partial adjE cnt) = Partial adjE (fmap f . cnt)
 
+instance (NFData s, NFData a) => NFData (Result s a) where
+  rnf (Success s a)      = rnf s `seq` rnf a
+  rnf (Failure s adjE e) = rnf s `seq` rnf adjE `seq` rnf e
+  rnf (Partial adjE _)   = rnf adjE
+
 -- | A transformation on an error message to get any additional
 --   messages provided by combinators (e.g. to provide a stack trace).
 newtype AdjustError = AE { adjustError :: String -> String
@@ -138,6 +144,10 @@ newtype AdjustError = AE { adjustError :: String -> String
 --   value to have valid @Show@ instances.
 instance Show AdjustError where
   show _ = "\"<AdjustError>\""
+
+-- Define an instance in case we change the type later.
+instance NFData AdjustError where
+  rnf _ = ()
 
 -- | A convenience alias for use with 'resultToEither' to avoid having
 --   to type the entire type out.
