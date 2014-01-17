@@ -23,6 +23,8 @@ library
   build-depends:         base >=4.6 && <4.7
                        , text
                        , deepseq
+                       , bytestring
+                       , text
 
   hs-source-dirs:      src
   default-language:    Haskell2010

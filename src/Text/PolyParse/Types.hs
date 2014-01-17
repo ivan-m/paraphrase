@@ -19,6 +19,13 @@ import Control.DeepSeq     (NFData (rnf))
 import Control.Monad       (MonadPlus (..))
 import Data.Monoid
 
+import qualified Data.ByteString      as SB
+import qualified Data.ByteString.Lazy as LB
+import qualified Data.Text            as ST
+import qualified Data.Text.Lazy       as LT
+import qualified Data.Text.Unsafe     as ST
+import           Data.Word            (Word8)
+
 -- -----------------------------------------------------------------------------
 
 {-
@@ -83,6 +90,61 @@ instance ParseInput [a] where
   {-# INLINE lengthAtLeast #-}
 
   breakWhen = span
+
+instance ParseInput SB.ByteString where
+  type Token SB.ByteString = Word8
+
+  uncons = SB.uncons
+
+  isEmpty = SB.null
+
+  -- length is O(1)
+  lengthAtLeast bs n = SB.length bs >= n
+  {-# INLINE lengthAtLeast #-}
+
+  breakWhen = SB.span
+
+instance ParseInput LB.ByteString where
+  type Token LB.ByteString = Word8
+
+  uncons = LB.uncons
+
+  isEmpty = LB.null
+
+  -- length is O(n)
+  lengthAtLeast bs n = LB.length bs >= fromIntegral n
+
+  breakWhen = LB.span
+
+instance ParseInput ST.Text where
+  type Token ST.Text = Char
+
+  uncons = ST.uncons
+
+  isEmpty = ST.null
+
+  -- We do @`quot` 2@ because UTF-16 (which Text is implemented with)
+  -- code points are either 1 or 2 Word16 values.  As such do this
+  -- O(1) test first in case it suffices before we do the O(n) case
+  -- for the real length.
+  lengthAtLeast t n = (ST.lengthWord16 t `quot` 2) >= n || ST.length t >= n
+  {-# INLINE lengthAtLeast #-}
+
+  breakWhen = ST.span
+
+instance ParseInput LT.Text where
+  type Token LT.Text = Char
+
+  uncons = LT.uncons
+
+  isEmpty = LT.null
+
+  -- Doesn't seem to be any real alternative but to do the O(n)
+  -- length.
+  lengthAtLeast t n = LT.length t >= fromIntegral n
+  {-# INLINE lengthAtLeast #-}
+
+  breakWhen = LT.span
 
 -- -----------------------------------------------------------------------------
 -- Result
