@@ -80,6 +80,7 @@ instance ParseInput [a] where
   isEmpty = null
 
   lengthAtLeast as n = not . null . drop (n-1) $ as
+  {-# INLINE lengthAtLeast #-}
 
   breakWhen = span
 
