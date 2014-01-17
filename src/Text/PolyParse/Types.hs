@@ -59,6 +59,7 @@ class (Monoid s) => ParseInput s where
 
   -- | Is the input empty?
   isEmpty :: s -> Bool
+  isEmpty = not . (`lengthAtLeast` 1)
 
   -- | Do we have at least @n@ tokens available?
   lengthAtLeast :: s -> Int -> Bool
