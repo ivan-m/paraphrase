@@ -244,19 +244,17 @@ manyFinally p t = addStackTrace "In a list of items with a terminator:"
 --
 --   If there's no risk of overlap between the two parsers, you should
 --   probably use 'manyFinally'.
---
---   Note that this combinator raises a severe (i.e. it uses 'commit')
---   error if the element parser succeeds at least once but then
---   neither the element parser nor the termination parser succeed
---   after that.
 manyFinally' :: (ParseInput s) => Parser s a -> Parser s z -> Parser s [a]
 manyFinally' p t = addStackTrace "In a list of items with a terminator:" go
   where
     go =     (t *> pure [])
-         <|> liftA2 (:) p (commit go)
-         <|> oneOf' [ ("sequence terminator",t *> pure [])
-                    , ("item in a sequence", p *> pure [])
-                    ]
+         <|> liftA2 (:) (p <|> errCheck) go
+
+    -- This isn't the best way to go about it (the @pure undefined@ is
+    -- a tad fugly, but should never be an issue) but it works.
+    errCheck = oneOf' [ ("sequence terminator",t *> pure undefined)
+                      , ("item in a sequence", p)
+                      ]
 {-# INLINE manyFinally' #-}
 
 -- -----------------------------------------------------------------------------
