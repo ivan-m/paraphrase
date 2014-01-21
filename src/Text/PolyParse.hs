@@ -360,7 +360,7 @@ addStackTrace msg = (`adjustErr` adjE)
 -- | As with 'addStackTrace' but raise the severity of the error (same
 --   relationship as between 'failBad' and 'fail').
 addStackTraceBad :: String -> Parser s a -> Parser s a
-addStackTraceBad msg = addStackTraceBad msg . commit
+addStackTraceBad msg = addStackTrace msg . commit
 {-# INLINE addStackTraceBad #-}
 
 -- | Apply the transformation function on any error messages that
