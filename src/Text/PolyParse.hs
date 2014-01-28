@@ -30,6 +30,7 @@ module Text.PolyParse
          -- * Parser combinators
        , next
        , satisfy
+       , satisfyWith
        , endOfInput
        , oneOf
        , bracket
@@ -129,18 +130,25 @@ endOfInput = P $ \ inp add mr adjE fl sc ->
 {-# INLINE endOfInput #-}
 
 -- | Return the next token from our input if it satisfies the given
+--   predicate.  Unlike 'satisfy', use the token (if one was
+--   available) to provide a custom error message.
+satisfyWith :: (ParseInput s) => (Token s -> String) -> (Token s -> Bool)
+               -> Parser s (Token s)
+satisfyWith toE f = P $ \ inp add mr adjE fl sc ->
+                          runP next inp add mr adjE fl $
+                               \ inp' add' mr' x ->
+                                  if f x
+                                     then sc inp' add' mr' x
+                                     else fl inp add mr adjE (toE x)
+                                          -- Note: use /original/ input stream
+                                          -- when we fail, not the one with
+                                          -- the first token taken off!
+{-# INLINE satisfyWith #-}
+
+-- | Return the next token from our input if it satisfies the given
 --   predicate.
 satisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s (Token s)
-satisfy f = P $ \ inp add mr adjE fl sc ->
-                  runP next inp add mr adjE fl $
-                       \ inp' add' mr' x ->
-                          if f x
-                             then sc inp' add' mr' x
-                             else fl inp add mr adjE "Token did not satisfy predicate"
-                                  -- Note: use /original/ input stream
-                                  -- when we fail, not the one with
-                                  -- the first token taken off!
-{-# INLINE satisfy #-}
+satisfy = satisfyWith (const "Token did not satisfy predicate")
 
 -- | Return the result of the first parser in the list that succeeds.
 oneOf :: (ParseInput s) => [Parser s a] -> Parser s a
