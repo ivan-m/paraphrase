@@ -21,7 +21,6 @@ library
                        , Text.PolyParse.TextManipulation
   -- other-extensions:
   build-depends:         base >=4.6 && <4.7
-                       , text
                        , deepseq
                        , bytestring
                        , text >= 0.11.3.1
