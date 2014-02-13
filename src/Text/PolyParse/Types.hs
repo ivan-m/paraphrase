@@ -66,8 +66,13 @@ class (Monoid s) => ParseInput s where
   -- | The elements of this input type.
   type Token s
 
-  -- | Attempt to extract the first token.
-  uncons :: s -> Maybe (Token s, s)
+  -- | Obtain the first token in the input.  Only used when the input
+  --   isn't empty, honest!
+  inputHead :: s -> Token s
+
+  -- | Return all but the first token of the input.  Only used when
+  --   the input isn't empty, honest!
+  inputTail :: s -> s
 
   -- | Is the input empty?
   isEmpty :: s -> Bool
@@ -85,8 +90,9 @@ class (Monoid s) => ParseInput s where
 instance ParseInput [a] where
   type Token [a] = a
 
-  uncons []     = Nothing
-  uncons (a:as) = Just (a,as)
+  inputHead = head
+
+  inputTail = tail
 
   isEmpty = null
 
@@ -98,7 +104,9 @@ instance ParseInput [a] where
 instance ParseInput SB.ByteString where
   type Token SB.ByteString = Word8
 
-  uncons = SB.uncons
+  inputHead = SB.unsafeHead
+
+  inputTail = SB.unsafeTail
 
   isEmpty = SB.null
 
@@ -111,7 +119,9 @@ instance ParseInput SB.ByteString where
 instance ParseInput LB.ByteString where
   type Token LB.ByteString = Word8
 
-  uncons = LB.uncons
+  inputHead = LB.head
+
+  inputTail = LB.tail
 
   isEmpty = LB.null
 
@@ -123,7 +133,9 @@ instance ParseInput LB.ByteString where
 instance ParseInput ST.Text where
   type Token ST.Text = Char
 
-  uncons = ST.uncons
+  inputHead = ST.unsafeHead
+
+  inputTail = ST.unsafeTail
 
   isEmpty = ST.null
 
@@ -139,7 +151,9 @@ instance ParseInput ST.Text where
 instance ParseInput LT.Text where
   type Token LT.Text = Char
 
-  uncons = LT.uncons
+  inputHead = LT.head
+
+  inputTail = LT.tail
 
   isEmpty = LT.null
 
@@ -568,14 +582,43 @@ ignoreAdditional :: (Monoid s) => WithIncremental s (WithIncremental s r -> r)
 ignoreAdditional inp _add mr f = f inp mempty mr
 {-# INLINE ignoreAdditional #-}
 
+-- | Optimise for the common case of ensuring there's at least one
+--   token, as isEmpty is usually O(1) whilst lengthAtLeast might be
+--   O(n).
+checkLength :: (ParseInput s) => s -> Int -> Bool
+checkLength s 1 = isEmpty s
+checkLength s n = lengthAtLeast s n
+{-# INLINE checkLength #-}
+
 -- | Make sure that there are at least @n@ 'Token's available.
 needAtLeast :: (ParseInput s) => Int -> Parser s ()
 needAtLeast !n = go
   where
     go = P $ \ inp add mr adjE fl sc ->
-      if lengthAtLeast (unI inp) n
+      if checkLength (unI inp) n
          then sc inp add mr ()
          else runP (needMoreInput *> go) inp add mr adjE fl sc
+{-# INLINE needAtLeast #-}
+
+ensure :: (ParseInput s) => Int -> Parser s s
+ensure !n = P $ \ inp add mr adjE fl sc ->
+      if checkLength (unI inp) n
+         then sc inp add mr (unI inp)
+         else ensure' n inp add mr adjE fl sc
+{-# INLINE ensure #-}
+
+-- The un-common case is split off to avoid recursion in ensure, so
+-- that it can be inlined properly.
+ensure' :: (ParseInput s) => Int -> WithIncremental s (AdjErr -> Failure s   r -> Success s s r -> Result  s   r)
+ensure' !n inp add mr adjE fl sc = runP (needMoreInput *> go n) inp add mr adjE fl sc
+  where
+    go !n' = P $ \ inp' add' mr' adjE' fl' sc' ->
+      if checkLength (unI inp') n'
+         then sc' inp' add' mr' (unI inp')
+         else runP (needMoreInput *> go n') inp' add' mr' adjE' fl' sc'
+
+put :: (ParseInput s) => s -> Parser s ()
+put s = P $ \ _inp add mr _adjE _fl sc -> sc (I s) add mr ()
 
 -- | Request more input.
 needMoreInput :: (ParseInput s) => Parser s ()

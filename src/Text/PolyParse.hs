@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {- |
    Module      : Text.PolyParse
    Description : Experimental polyparse reimplementation
@@ -109,16 +110,8 @@ failBad = commit . fail
 
 -- | Return the next token from the input source.
 next :: (ParseInput s) => Parser s (Token s)
-next = needAtLeast 1
-       *> P (\ inp add mr adjE fl sc -> maybe (fl inp add mr adjE "Ran out of input")
-                                        -- Note that when we fail, we
-                                        -- use the /original/ input
-                                        -- (even though it's empty).
-                                        (\ (t,inp') -> sc (I inp') add mr t)
-                                        (uncons (unI inp)))
+next = satisfy (const True)
 {-# INLINE next #-}
-
--- TODO: test if we actually need uncons to return a Maybe now...
 
 -- | This parser succeeds if we've reached the end of our input, and
 --   fails otherwise.
@@ -134,21 +127,18 @@ endOfInput = P $ \ inp add mr adjE fl sc ->
 --   available) to provide a custom error message.
 satisfyWith :: (ParseInput s) => (Token s -> String) -> (Token s -> Bool)
                -> Parser s (Token s)
-satisfyWith toE f = P $ \ inp add mr adjE fl sc ->
-                          runP next inp add mr adjE fl $
-                               \ inp' add' mr' x ->
-                                  if f x
-                                     then sc inp' add' mr' x
-                                     else fl inp add mr adjE (toE x)
-                                          -- Note: use /original/ input stream
-                                          -- when we fail, not the one with
-                                          -- the first token taken off!
+satisfyWith toE f = do inp <- ensure 1
+                       let !t = inputHead inp
+                       if f t
+                          then put (inputTail inp) *> pure t
+                          else fail (toE t)
 {-# INLINE satisfyWith #-}
 
 -- | Return the next token from our input if it satisfies the given
 --   predicate.
 satisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s (Token s)
 satisfy = satisfyWith (const "Token did not satisfy predicate")
+{-# INLINE satisfy #-}
 
 -- | Return the result of the first parser in the list that succeeds.
 oneOf :: (ParseInput s) => [Parser s a] -> Parser s a
