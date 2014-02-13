@@ -27,6 +27,7 @@ module Text.PolyParse
        , EitherResult
          -- ** Parser input
        , ParseInput (..)
+       , AsChar8(..)
 
          -- * Parser combinators
        , next

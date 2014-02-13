@@ -15,15 +15,17 @@ module Text.PolyParse.Types where
 import Text.PolyParse.TextManipulation
 
 import Control.Applicative
-import Control.Arrow       (second, (***))
+import Control.Arrow       ((***))
 import Control.DeepSeq     (NFData (rnf))
 import Control.Monad       (MonadPlus (..))
 import Data.Monoid
 
 import qualified Data.ByteString            as SB
-import qualified Data.ByteString.Char8      as SBC
+import           Data.ByteString.Char8      ()
+import           Data.ByteString.Internal   (w2c)
 import qualified Data.ByteString.Lazy       as LB
-import qualified Data.ByteString.Lazy.Char8 as LBC
+import           Data.ByteString.Lazy.Char8 ()
+import qualified Data.ByteString.Unsafe     as SB
 import           Data.String                (IsString (..))
 import qualified Data.Text                  as ST
 import qualified Data.Text.Lazy             as LT
@@ -164,49 +166,21 @@ instance ParseInput LT.Text where
 
   breakWhen = LT.span
 
--- | A wrapper around strict 'SB.ByteString's for parsing 'Char8' values.
---
---   You probably don't want to do this... but if you do, this will
---   let you.
-newtype BSChar8 = BSChar8 { unBSChar8 :: SB.ByteString }
-                  deriving (Eq, Ord, Show, Read, IsString, Monoid)
+newtype AsChar8 s = AsChar8 { unChar8 :: s }
+                    deriving (Eq, Ord, Show, Read, IsString, Monoid, NFData)
 
-instance ParseInput BSChar8 where
-  type Token BSChar8 = Char
+instance (ParseInput s, Token s ~ Word8) => ParseInput (AsChar8 s) where
+  type Token (AsChar8 s) = Char
 
-  uncons = fmap (second BSChar8) . SBC.uncons . unBSChar8
-  {-# INLINE uncons #-}
+  inputHead = w2c . inputHead . unChar8
 
-  isEmpty = SB.null . unBSChar8
-  {-# INLINE isEmpty #-}
+  inputTail = AsChar8 . inputTail . unChar8
 
-  lengthAtLeast bs = lengthAtLeast (unBSChar8 bs)
-  {-# INLINE lengthAtLeast #-}
+  isEmpty = isEmpty . unChar8
 
-  breakWhen f = (BSChar8 *** BSChar8) . SBC.span f . unBSChar8
-  {-# INLINE breakWhen #-}
+  lengthAtLeast s = lengthAtLeast (unChar8 s)
 
--- | A wrapper around lazy 'LB.ByteString's for parsing 'Char8' values.
---
---   You probably don't want to do this... but if you do, this will
---   let you.
-newtype LBSChar8 = LBSChar8 { unLBSChar8 :: LB.ByteString }
-                   deriving (Eq, Ord, Show, Read, IsString, Monoid)
-
-instance ParseInput LBSChar8 where
-  type Token LBSChar8 = Char
-
-  uncons = fmap (second LBSChar8) . LBC.uncons . unLBSChar8
-  {-# INLINE uncons #-}
-
-  isEmpty = LB.null . unLBSChar8
-  {-# INLINE isEmpty #-}
-
-  lengthAtLeast bs = lengthAtLeast (unLBSChar8 bs)
-  {-# INLINE lengthAtLeast #-}
-
-  breakWhen f = (LBSChar8 *** LBSChar8) . LBC.span f . unLBSChar8
-  {-# INLINE breakWhen #-}
+  breakWhen f = (AsChar8 *** AsChar8) . breakWhen (f . w2c) . unChar8
 
 -- -----------------------------------------------------------------------------
 -- Result
