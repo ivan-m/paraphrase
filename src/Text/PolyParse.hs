@@ -78,12 +78,6 @@ import Text.PolyParse.Types
 import Control.Applicative
 import Data.Monoid
 
--- Sources
-{-
-import           Data.Text.Lazy (Text)
-import qualified Data.Text.Lazy as LT
--}
-
 -- -----------------------------------------------------------------------------
 -- Commitment
 
