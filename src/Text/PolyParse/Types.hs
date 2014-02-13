@@ -560,7 +560,7 @@ ignoreAdditional inp _add mr f = f inp mempty mr
 --   token, as isEmpty is usually O(1) whilst lengthAtLeast might be
 --   O(n).
 checkLength :: (ParseInput s) => s -> Int -> Bool
-checkLength s 1 = isEmpty s
+checkLength s 1 = not $ isEmpty s
 checkLength s n = lengthAtLeast s n
 {-# INLINE checkLength #-}
 
