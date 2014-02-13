@@ -484,6 +484,18 @@ instance (ParseInput s) => Alternative (Parser s) where
   (<|>) = onFail
   {-# INLINE (<|>) #-}
 
+  many v = many_v
+    where
+      many_v = some_v <|> pure []
+      some_v = (:) <$> v <*> many_v
+  {-# INLINE many #-}
+
+  some v = some_v
+    where
+      many_v = some_v <|> pure []
+      some_v = (:) <$> v <*> many_v
+  {-# INLINE some #-}
+
 onFail :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
 onFail p1 p2 = P $ \ inp add mr adjE fl sc ->
                let fl' inp' add' mr' _adjE' _e
