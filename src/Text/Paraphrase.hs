@@ -87,11 +87,11 @@ import Data.Monoid
 --   That is, @commit p1 \<|\> p2@ is equivalent to just @p1@ (though
 --   also preventing any other usage of @'<|>'@ that might occur).
 commit :: Parser s a -> Parser s a
-commit p = P $ \ inp add mr adjE _fl sc ->
+commit p = P $ \ pSt _fl sc ->
                  -- We commit by prohibiting external sources from
                  -- overriding our failure function (by just ignoring
                  -- provided Failure values).
-                 runP p inp add mr adjE failure sc
+                 runP p pSt failure sc
 {-# INLINE commit #-}
 
 -- | A combination of 'fail' and 'commit': specify a failure that
@@ -111,10 +111,10 @@ next = satisfy (const True)
 -- | This parser succeeds if we've reached the end of our input, and
 --   fails otherwise.
 endOfInput :: (ParseInput s) => Parser s ()
-endOfInput = P $ \ inp add mr adjE fl sc ->
-                   if isEmpty (unI inp)
-                      then sc inp add mr ()
-                      else fl inp add mr adjE "Expected end of input"
+endOfInput = P $ \ pSt fl sc ->
+                   if isEmpty (unI $ input pSt)
+                      then sc pSt ()
+                      else fl pSt "Expected end of input"
 {-# INLINE endOfInput #-}
 
 -- | Return the next token from our input if it satisfies the given
@@ -146,11 +146,11 @@ oneOf = foldr (<|>) (fail "Failed to parse any of the possible choices")
 manySatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s s
 manySatisfy f = go
   where
-    go = P $ \ inp add mr adjE fl sc ->
-      let (pre,suf) = breakWhen f (unI inp)
-      in if (isEmpty suf && mr /= Complete)
-            then runP (needMoreInput *> go) inp add mr adjE fl sc
-            else sc (I suf) add mr pre
+    go = P $ \ pSt fl sc ->
+      let (pre,suf) = breakWhen f (unI $ input pSt)
+      in if (isEmpty suf && more pSt /= Complete)
+            then runP (needMoreInput *> go) pSt fl sc
+            else sc (pSt { input = I suf }) pre
 {-# INLINE manySatisfy #-}
 
 -- TODO: consider splitting and merging rather than continually
@@ -173,7 +173,7 @@ someSatisfy f = do r <- manySatisfy f
 --   expand it, and push the expanded version back onto the stream
 --   ready to parse normally.
 reparse :: (ParseInput s) => s -> Parser s ()
-reparse s = P $ \ inp add mr _adjE _fl sc -> sc (I s <> inp) add mr ()
+reparse s = P $ \ pSt _fl sc -> sc (pSt { input = I s <> input pSt }) ()
 {-# INLINE reparse #-}
 
 -- -----------------------------------------------------------------------------
@@ -231,7 +231,7 @@ manyFinally p t = addStackTrace "In a list of items with a terminator:"
 {-# INLINE manyFinally #-}
 
 -- | As with 'manyFinally', but handles the case where the terminator
---   parser overlaps with the element parser.  As such, at each stage
+--   parser overlapSt with the element parser.  As such, at each stage
 --   it first tries the terminator parser before attempting to find an
 --   element.
 --
@@ -279,35 +279,35 @@ upto n p = foldr go (pure []) $ replicate n p
 -- -----------------------------------------------------------------------------
 -- Chaining
 
--- | @chainParsers pt ps@ will parse the input with @ps@ and then
---   parse the result of that parse with @pt@.  Control (and remaining
+-- | @chainParsers pb pa@ will parse the input with @pa@ and then
+--   parse the result of that parse with @pb@.  Control (and remaining
 --   original input) is returned to the caller.
 --
---   @pt@ is /not/ assumed to consume all of its input (and any
---   remaining input is discarded).  If this is required, use @pt '<*'
---   'endOfInput'@.  Similarly if @ps@ is meant to consume all input.
+--   @pb@ is /not/ assumed to consume all of its input (and any
+--   remaining input is discarded).  If this is required, use @pb '<*'
+--   'endOfInput'@.  Similarly if @pa@ is meant to consume all input.
 --
---   Note that @ps@ will run completely and obtain its entire output
---   before passing it on to @pt@ rather than letting @pt@ consume it
+--   Note that @pa@ will run completely and obtain its entire output
+--   before passing it on to @pb@ rather than letting @pb@ consume it
 --   lazily.
-chainParsers :: (ParseInput t) => Parser t a -> Parser s t -> Parser s a
-chainParsers pt ps
-   = P $ \ inpS addS mrS adjE fl sc ->
-         runP ps inpS addS mrS adjE fl $
-           \ inpS' addS' mrS' inpT ->
+chainParsers :: (ParseInput b) => Parser b c -> Parser a b -> Parser a c
+chainParsers pb pa
+   = P $ \ pStA fl sc ->
+         runP pa pStA  fl $
+           \ pStA' inpB ->
               -- We need to explicitly run the parser and use a case
               -- statement, as the types for the failure and success
               -- cases won't match if we just use runP.
               --
-              -- ps will deal with getting more input, so we don't
+              -- pa will deal with getting more input, so we don't
               -- have to worry about that here, hence why it's safe to
               -- use runParser.
-              case fst $ runParser pt' inpT of
-                Right a         -> sc inpS' addS' mrS' a
-                Left (adjErr,e) -> let adjE' = adjE . adjustError adjErr
-                                   in fl inpS' addS' mrS' adjE' e
+              case fst $ runParser pb' inpB of
+                Right a         -> sc pStA' a
+                Left (adjErr,e) -> let adjE' = parseLog pStA' . adjustError adjErr
+                                   in fl (pStA' { parseLog = adjE' }) e
   where
-    pt' = addStackTrace "Running chained parser:" pt
+    pb' = addStackTrace "Running chained parser:" pb
 {-# INLINE chainParsers #-}
 
 -- -----------------------------------------------------------------------------
@@ -334,6 +334,9 @@ failMessage :: (ParseInput s) => String -> Parser s a -> Parser s a
 failMessage e = (`onFail` fail e)
 {-# INLINE failMessage #-}
 
+addTraceMessage :: String -> Parser s ()
+addTraceMessage m = addStackTrace m (pure ())
+
 -- | A convenient function to produce (reasonably) pretty stack traces
 --   for parsing failures.
 addStackTrace :: String -> Parser s a -> Parser s a
@@ -357,8 +360,8 @@ addStackTraceBad msg = addStackTrace msg . commit
 -- | Apply the transformation function on any error messages that
 --   might arise from the provided parser.
 adjustErr :: Parser s a -> (String -> String) -> Parser s a
-adjustErr p f = P $ \ inp add mr adjE fl sc ->
-                       runP p inp add mr (adjE . f) fl sc
+adjustErr p f = P $ \ pSt fl sc ->
+                       runP p (pSt { parseLog = parseLog pSt . f }) fl sc
 {-# INLINE adjustErr #-}
 
 -- | As with 'adjustErr', but also raises the severity (same
@@ -385,15 +388,17 @@ oneOf' = go id
                         ++ indent 2 (concatMap showErr (errs []))
     -- Can't use <|> here as we want access to `e'.  Otherwise this is
     -- pretty much a duplicate of onFail.
-    go errs ((nm,p):ps) = P $ \ inp add mr adjE fl sc ->
+    go errs ((nm,p):ps) = P $ \ pSt fl sc ->
       let go' e = go (errs . ((nm,e):)) ps
           -- When we fail (and the parser isn't committed), recurse
           -- and try the next parser whilst saving the error message.
-          fl' inp' add' mr' adjE' e = mergeIncremental inp add mr inp' add' mr' $
-            \ inp'' add'' mr'' -> runP (go' $ adjE' e) inp'' add'' mr'' adjE fl sc
-      in ignoreAdditional inp add mr $
+          fl' pSt' e = mergeIncremental pSt pSt' $
+            \ pSt'' -> runP (go' $ parseLog pSt' e) pSt'' fl sc
+
+          sc' pSt' = sc (prependAdditional pSt pSt')
+          -- Put back in the original additional input.
+      in runP p (ignoreAdditional pSt { parseLog = noAdj }) fl' sc'
            -- Note: we only consider the AdjErr from the provided
            -- parser, not the global one.
-           \ inp' add' mr' -> runP p inp' add' mr' noAdj fl' sc
 
     showErr (nm,e) = "* " ++ nm ++ ":\n" ++ indent 4 e ++ "\n"

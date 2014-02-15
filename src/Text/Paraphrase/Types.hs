@@ -274,8 +274,7 @@ newtype Parser s a = P {
   -- Our parser is actually a function of functions!
   runP :: forall r.
           WithIncremental s   -- The input.
-            (AdjErr           -- What to do with any error messages.
-             -> Failure s   r -- What to do when we fail.
+            (   Failure s   r -- What to do when we fail.
              -> Success s a r -- What to do when we succeed.
              -> Result  s   r)
   }
@@ -324,7 +323,46 @@ function due to how 'commit' works.
 
 -- An alias to make types involving explicit incremental support
 -- easier to read.
-type WithIncremental s r = Input s -> Additional s -> More -> r
+type WithIncremental s r = ParseState s -> r -- Input s -> Additional s -> More -> r
+
+-- The stateful values for parsing.  One large value is used rather
+-- than separating them to help make more manageable and readable.
+--
+-- CONVENTION: a value of this type is called something like @pSt@.
+data ParseState s = PS { input      :: !(Input s)
+                       , additional :: !(Additional s)
+                       , more       :: !More
+                       , parseLog   :: !AdjErr
+                       }
+
+instance (Show s) => Show (ParseState s) where
+  showsPrec d pSt = showParen (d > 10) $
+    showString "PS { input = "
+    . shows (input pSt)
+    . showString ", additional = "
+    . shows (additional pSt)
+    . showString ", more = "
+    . shows (more pSt)
+    . showString ", parseLog = \"<error log>\" }"
+
+
+blankState :: (Monoid s) => ParseState s
+blankState = PS { input      = mempty
+                , additional = mempty
+                , more       = Incomplete
+                , parseLog   = noAdj
+                }
+
+completeState :: (Monoid s) => s -> ParseState s
+completeState inp = blankState { input = I inp
+                               , more  = Complete
+                               }
+
+incompleteState :: (Monoid s) => s -> ParseState s
+incompleteState inp = blankState { input = I inp
+                                 -- Not to rely upon current coding default
+                                 , more  = Incomplete
+                                 }
 
 -- The input that we're currently parsing.
 --
@@ -370,7 +408,7 @@ type AdjErr = ErrMsg -> ErrMsg
 -- What to do when we fail a parse; @s@ is the input type.
 --
 -- CONVENTION: a value of this type is called something like @fl@.
-type Failure s   r = WithIncremental s (AdjErr -> ErrMsg -> Result s r)
+type Failure s   r = WithIncremental s (ErrMsg -> Result s r)
 
 -- What to do when a parse is successful; @s@ is the input type, @a@
 -- is the result of the parse, @r@ is the output type.
@@ -385,30 +423,30 @@ noAdj = id
 -- Dum... Dum... Dum... DUMMMMMM!!!  The parsing has gone all wrong,
 -- so apply the error-message adjustment and stop doing anything.
 failure :: Failure s r
-failure inp _add _mr adjE e = Failure (unI inp) addE' e
+failure pSt e = Failure (unI $ input pSt) addE' e
   where
-    addE' = AE $ adjE . indMsg
+    addE' = AE $ parseLog pSt . indMsg
     indMsg = allButFirstLine (indent lenStackTracePoint)
 
 -- Hooray!  We're all done here, and a job well done!
 successful :: Success s a a
-successful inp _add _mr = Success (unI inp)
+successful pSt = Success (unI $ input pSt)
 
 -- | Run the parser on the provided input, providing the raw 'Result'
 --   value.
 parseInput :: (ParseInput s) => Parser s a -> s -> Result s a
-parseInput p inp = runP p (I inp) mempty Incomplete noAdj failure successful
+parseInput p inp = runP p (incompleteState inp) failure successful
 
 -- | Run a parser.
 runParser :: (ParseInput s) => Parser s a -> s
              -> (EitherResult a, s)
 runParser p inp = resultToEither
-                    (runP p (I inp) mempty Complete noAdj failure successful)
+                    (runP p (completeState inp) failure successful)
 
 -- | Run a parser, assuming it succeeds.  If the parser fails, use
 --   'error' to display the message.
 runParser' :: (ParseInput s) => Parser s a -> s -> a
-runParser' p inp = case fst $ runParser p inp of
+runParser' p pSt = case fst $ runParser p pSt of
                      Right a       -> a
                      Left (adjE,e) -> error ('\n' : adjustError adjE e)
 
@@ -420,9 +458,8 @@ instance Functor (Parser s) where
   {-# INLINE fmap #-}
 
 fmapP :: (a -> b) -> Parser s a -> Parser s b
-fmapP f pa = P $ \ inp add mr adjE fl sc ->
-                 runP pa inp add mr adjE fl $ \ inp' add' mr' a ->
-                                                 sc inp' add' mr' (f a)
+fmapP f pa = P $ \ pSt fl sc ->
+                 runP pa pSt fl $ \ pSt' a -> sc pSt' (f a)
 {-# INLINE fmapP #-}
 
 instance Applicative (Parser s) where
@@ -439,30 +476,29 @@ instance Applicative (Parser s) where
   {-# INLINE (<*) #-}
 
 returnP :: a -> Parser s a
-returnP a = P $ \ inp add mr _adjE _fl sc -> sc inp add mr a
+returnP a = P $ \ pSt _fl sc -> sc pSt a
 {-# INLINE returnP #-}
 
 -- Explicit version of @pa >>= const pb@.
 ignFirstP :: Parser s a -> Parser s b -> Parser s b
-ignFirstP pa pb = P $ \ inp add mr adjE fl sc ->
-                        runP pa inp add mr adjE fl $ \ inp' add' mr' _a ->
-                                                runP pb inp' add' mr' adjE fl sc
+ignFirstP pa pb = P $ \ pSt fl sc ->
+                        runP pa pSt fl $ \ pSt' _a -> runP pb pSt' fl sc
 {-# INLINE ignFirstP #-}
 
 discard :: Parser s a -> Parser s b -> Parser s a
-discard pa pb = P $ \ inp add mr adjE fl sc ->
-                  let sc' a inp' add' mr' b = b `seq` sc inp' add' mr' a
+discard pa pb = P $ \ pSt fl sc ->
+                  let sc' a pSt' b = b `seq` sc pSt' a
                       -- Ignore the provided result and use the one
                       -- you obtained earlier.
-                  in runP pa inp add mr adjE fl $ \ inp' add' mr' a ->
-                                              runP pb inp' add' mr' adjE fl (sc' a)
+                  in runP pa pSt fl $ \ pSt' a ->
+                                            runP pb pSt' fl (sc' a)
 {-# INLINE discard #-}
 
 apP :: Parser s (a -> b) -> Parser s a -> Parser s b
-apP pf pa = P $ \ inp add mr adjE fl sc ->
-                  runP pf inp add mr adjE fl
-                       $ \ inp' add' mr' f -> runP pa inp' add' mr' adjE fl
-                                          $ \ inp'' add'' mr'' a -> sc inp'' add'' mr'' (f a)
+apP pf pa = P $ \ pSt fl sc ->
+                  runP pf pSt fl
+                       $ \ pSt' f -> runP pa pSt' fl
+                                          $ \ pSt'' a -> sc pSt'' (f a)
 {-# INLINE apP #-}
 
 instance (ParseInput s) => Alternative (Parser s) where
@@ -485,10 +521,10 @@ instance (ParseInput s) => Alternative (Parser s) where
   {-# INLINE some #-}
 
 onFail :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
-onFail p1 p2 = P $ \ inp add mr adjE fl sc ->
-               let fl' inp' add' mr' _adjE' _e
-                       = mergeIncremental inp add mr inp' add' mr' $
-                         \ inp'' add'' mr'' -> runP p2 inp'' add'' mr'' adjE fl sc
+onFail p1 p2 = P $ \ pSt fl sc ->
+               let fl' pSt' _e
+                       = mergeIncremental pSt pSt' $
+                         \ pSt'' -> runP p2 pSt'' fl sc
                    -- If we fail, run parser p2 instead.  Don't use
                    -- the provided @AdjErr@ value, get the "global"
                    -- one instead (as we don't want p1's stack
@@ -496,13 +532,12 @@ onFail p1 p2 = P $ \ inp add mr adjE fl sc ->
                    -- requested and obtained additional input that we
                    -- use it as well.
 
-                   sc' inp' add' mr' = sc inp' (add <> add') mr'
+                   sc' pSt' = sc (prependAdditional pSt pSt')
                    -- Put back in the original additional input.
-             in ignoreAdditional inp add mr $
+             in runP p1 (ignoreAdditional pSt) fl' sc'
                  -- We want to be able to differentiate the
                  -- 'Additional' value that we already have vs any we
                  -- may get from running @p1@.
-                  \ inp' add' mr' -> runP p1 inp' add' mr' adjE fl' sc'
 {-# INLINE onFail #-}
 
 instance Monad (Parser s) where
@@ -519,13 +554,13 @@ instance Monad (Parser s) where
   {-# INLINE fail #-}
 
 failP :: String -> Parser s a
-failP e = P $ \ inp add mr adjE fl _sc -> fl inp add mr adjE e
+failP e = P $ \ pSt fl _sc -> fl pSt e
 {-# INLINE failP #-}
 
 bindP ::  Parser s a -> (a -> Parser s b) -> Parser s b
-bindP p f = P $ \ inp add mr adjE fl sc -> runP p inp add mr adjE fl $
+bindP p f = P $ \ pSt fl sc -> runP p pSt fl $
                  -- Get the new parser and run it.
-                  \ inp' add' mr' a -> runP (f a) inp' add' mr' adjE fl sc
+                  \ pSt' a -> runP (f a) pSt' fl sc
 {-# INLINE bindP #-}
 
 instance (ParseInput s) => MonadPlus (Parser s) where
@@ -538,22 +573,28 @@ instance (ParseInput s) => MonadPlus (Parser s) where
 -- -----------------------------------------------------------------------------
 -- Incremental support
 
--- If we pretend that the three parts of the 'WithIncremental' inputs
--- are one value: @mergeIncremental inc1 inc2@ is used when @inc2@
--- originally started as having the same 'received' input as @inc1@,
--- but may have since received additional input.
+-- @mergeIncremental inc1 inc2@ is used when @inc2@ originally started
+-- as having the same 'received' input as @inc1@, but may have since
+-- received additional input.
 mergeIncremental :: (Monoid s) => WithIncremental s
                                     (WithIncremental s
                                       (WithIncremental s r -> r))
-mergeIncremental inp1 add1 mr1 _inp2 add2 mr2 f =
-  let !inp = inp1 <> I (unA add2)
-      !add = add1 <> add2
-      !mr  = mr1  <> mr2
-  in f inp add mr
+mergeIncremental pSt1 pSt2 f =
+  let !i = input pSt1 <> I (unA $ additional pSt2)
+      !a = additional pSt1 <> additional pSt2
+      !m = more pSt1  <> more pSt2
+  in f (pSt1 { input = i, additional = a, more = m })
 {-# INLINE mergeIncremental #-}
 
-ignoreAdditional :: (Monoid s) => WithIncremental s (WithIncremental s r -> r)
-ignoreAdditional inp _add mr f = f inp mempty mr
+-- Used when - to start with - @pSt2 = ignoreAdditional inp1@, but
+-- then possibly had input consumed and additional input obtained.  As
+-- such, add the original additional value back in.
+prependAdditional :: (Monoid s) => ParseState s -> ParseState s -> ParseState s
+prependAdditional pSt1 pSt2 = pSt2 { additional = additional pSt1 <> additional pSt2 }
+{-# INLINE prependAdditional #-}
+
+ignoreAdditional :: (Monoid s) => ParseState s -> ParseState s
+ignoreAdditional pSt = pSt { additional = mempty }
 {-# INLINE ignoreAdditional #-}
 
 -- | Optimise for the common case of ensuring there's at least one
@@ -568,51 +609,52 @@ checkLength s n = lengthAtLeast s n
 needAtLeast :: (ParseInput s) => Int -> Parser s ()
 needAtLeast !n = go
   where
-    go = P $ \ inp add mr adjE fl sc ->
-      if checkLength (unI inp) n
-         then sc inp add mr ()
-         else runP (needMoreInput *> go) inp add mr adjE fl sc
+    go = P $ \ pSt fl sc ->
+      if checkLength (unI $ input pSt) n
+         then sc pSt ()
+         else runP (needMoreInput *> go) pSt fl sc
 {-# INLINE needAtLeast #-}
 
 ensure :: (ParseInput s) => Int -> Parser s s
-ensure !n = P $ \ inp add mr adjE fl sc ->
-      if checkLength (unI inp) n
-         then sc inp add mr (unI inp)
-         else ensure' n inp add mr adjE fl sc
+ensure !n = P $ \ pSt fl sc ->
+      if checkLength (unI $ input pSt) n
+         then sc pSt (unI $ input pSt)
+         else ensure' n pSt fl sc
 {-# INLINE ensure #-}
 
 -- The un-common case is split off to avoid recursion in ensure, so
 -- that it can be inlined properly.
-ensure' :: (ParseInput s) => Int -> WithIncremental s (AdjErr -> Failure s   r -> Success s s r -> Result  s   r)
-ensure' !n inp add mr adjE fl sc = runP (needMoreInput *> go n) inp add mr adjE fl sc
+ensure' :: (ParseInput s) => Int -> WithIncremental s (Failure s   r -> Success s s r -> Result  s   r)
+ensure' !n pSt fl sc = runP (needMoreInput *> go n) pSt fl sc
   where
-    go !n' = P $ \ inp' add' mr' adjE' fl' sc' ->
-      if checkLength (unI inp') n'
-         then sc' inp' add' mr' (unI inp')
-         else runP (needMoreInput *> go n') inp' add' mr' adjE' fl' sc'
+    go !n' = P $ \ pSt' fl' sc' ->
+      if checkLength (unI $ input pSt') n'
+         then sc' pSt' (unI $ input pSt')
+         else runP (needMoreInput *> go n') pSt' fl' sc'
 
 put :: (ParseInput s) => s -> Parser s ()
-put s = P $ \ _inp add mr _adjE _fl sc -> sc (I s) add mr ()
+put s = P $ \ pSt _fl sc -> sc (pSt { input = I s }) ()
 
 -- | Request more input.
 needMoreInput :: (ParseInput s) => Parser s ()
-needMoreInput = P $ \ inp add mr adjE fl sc ->
-  if mr == Complete
-     then fl inp add mr adjE "Not enough input."
-     else let fl' inp' add' mr' = fl inp' add' mr' adjE "Not enough input."
-              sc' inp' add' mr' = sc inp' add' mr' ()
-          in requestInput inp add mr adjE fl' sc'
+needMoreInput = P $ \ pSt fl sc ->
+  if more pSt == Complete
+     then fl pSt "Not enough input."
+     else let fl' pSt' = fl pSt' "Not enough input."
+              sc' pSt' = sc pSt' ()
+          in requestInput pSt fl' sc'
 
 -- | Construct a 'Partial' 'Result' with a continuation function that
 --   will use the first provided function if it fails, and the second
 --   if it succeeds.
+--
+--   It is assumed that @more pSt == Incomplete@.
 requestInput :: (ParseInput s) =>
                 WithIncremental s
-                  ( AdjErr
-                    -> WithIncremental s (Result s r) -- Failure case
+                  (    WithIncremental s (Result s r) -- Failure case
                     -> WithIncremental s (Result s r) -- Success case
                     -> Result s r)
-requestInput inp add _mr adjE fl sc = Partial (AE adjE) $ \ s ->
+requestInput pSt fl sc = Partial (AE (parseLog pSt)) $ \ s ->
   if isEmpty s
-     then fl inp add Complete
-     else sc (inp <> I s) (add <> A s) Incomplete
+     then fl (pSt { more = Complete })
+     else sc (pSt { input = input pSt <> I s, additional = additional pSt <> A s})
