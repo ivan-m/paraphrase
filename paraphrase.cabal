@@ -13,9 +13,9 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Text.ParaPhrase
-  other-modules:         Text.ParaPhrase.Types
-                       , Text.ParaPhrase.TextManipulation
+  exposed-modules:     Text.Paraphrase
+  other-modules:         Text.Paraphrase.Types
+                       , Text.Paraphrase.TextManipulation
   -- other-extensions:
   build-depends:         base >=4.6 && <4.7
                        , deepseq
