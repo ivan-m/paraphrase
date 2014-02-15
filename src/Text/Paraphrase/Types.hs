@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns, GeneralizedNewtypeDeriving, RankNTypes, TypeFamilies
              #-}
 {- |
-   Module      : Text.PolyParse.Types
+   Module      : Text.Paraphrase.Types
    Description : Definition of types
    Copyright   : (c) Ivan Lazar Miljenovic
    License     : 3-Clause BSD-style
@@ -10,9 +10,9 @@
    Definition of types, classes and low-level functions.
 
  -}
-module Text.PolyParse.Types where
+module Text.Paraphrase.Types where
 
-import Text.PolyParse.TextManipulation
+import Text.Paraphrase.TextManipulation
 
 import Control.Applicative
 import Control.Arrow       ((***))

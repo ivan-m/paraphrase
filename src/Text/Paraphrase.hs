@@ -1,6 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {- |
-   Module      : Text.PolyParse
+   Module      : Text.Paraphrase
    Description : Experimental polyparse reimplementation
    Copyright   : (c) Ivan Lazar Miljenovic
    License     : 3-Clause BSD-style
@@ -12,7 +12,7 @@
    <http://hackage.haskell.org/package/polyparse polyparse> library.
 
  -}
-module Text.PolyParse
+module Text.Paraphrase
        ( -- * The parser
          Parser
          -- ** Running parsers
@@ -72,8 +72,8 @@ module Text.PolyParse
        , module Control.Applicative
        ) where
 
-import Text.PolyParse.TextManipulation
-import Text.PolyParse.Types
+import Text.Paraphrase.TextManipulation
+import Text.Paraphrase.Types
 
 import Control.Applicative
 import Data.Monoid

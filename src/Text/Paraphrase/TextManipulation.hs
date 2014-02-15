@@ -1,5 +1,5 @@
 {- |
-   Module      : Text.PolyParse.TextManipulation
+   Module      : Text.Paraphrase.TextManipulation
    Description : Manipulating strings
    Copyright   : (c) Ivan Lazar Miljenovic
    License     : 3-Clause BSD-style
@@ -8,7 +8,7 @@
    Common functions used to manipulate error messages, etc.
 
  -}
-module Text.PolyParse.TextManipulation where
+module Text.Paraphrase.TextManipulation where
 
 import Data.List (intercalate)
 

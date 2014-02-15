@@ -1,18 +1,16 @@
-% polyparse-next
+% paraphrase
 % Ivan Lazar Miljenovic
 
 You don't want to use this library.
 
 Really.
 
+Well, at least not yet.
+
 This is an experiment in terms of how much performance can be squeezed
 out of a parser using an API like that of _[polyparse]_ (specifically
 the `Text.ParserCombinators.Poly.*` modules) by using an
 implementation based upon that of _[attoparsec]_'s.
-
-If this is successful, it will either be folded into polyparse, or
-else into a new improved parser combinator library (with a better name
-than "polyparse-next").
 
 [polyparse]: http://hackage.haskell.org/package/polyparse
 

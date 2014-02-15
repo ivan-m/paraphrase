@@ -11,7 +11,7 @@ and method of usage as a whole has been designed to reflect that of
 the various polyparse parsers.  However, there are some differences
 which this document attempts to catalogue:
 
-1. The types are obviously different.  `polyparse-next` is polymorphic
+1. The types are obviously different.  `paraphrase` is polymorphic
    in terms of the input rather than a separate parser type for every
    possible input type.
 
@@ -63,7 +63,7 @@ which this document attempts to catalogue:
    will only have an impact on the possible error messages returned if
    parsing fails.
 
-8. `polyparse-next` isn't as lazy and doesn't support partial parsing;
+8. `paraphrase` isn't as lazy and doesn't support partial parsing;
    that is, whereas in `polyaprse` the parser:
 
     ~~~ {.haskell"
@@ -71,7 +71,7 @@ which this document attempts to catalogue:
     ~~~
 
     will start to return the first four elements of the list before
-    reporting the error, the equivalent in `polyparse-next` will not
+    reporting the error, the equivalent in `paraphrase` will not
     return the partial output and will just throw an error.
 
     It seems at this stage that this is not something that can be
