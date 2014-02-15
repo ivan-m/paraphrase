@@ -632,7 +632,7 @@ ensure' !n pSt fl sc = runP (needMoreInput *> go n) pSt fl sc
          then sc' pSt' (unI $ input pSt')
          else runP (needMoreInput *> go n') pSt' fl' sc'
 
-put :: (ParseInput s) => s -> Parser s ()
+put :: s -> Parser s ()
 put s = P $ \ pSt _fl sc -> sc (pSt { input = I s }) ()
 
 -- | Request more input.
