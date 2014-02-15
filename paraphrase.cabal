@@ -1,6 +1,6 @@
 name:                paraphrase
 version:             0.0.0.0
-synopsis:            Experimental re-implementation of polyparse
+synopsis:            Parametrised parsing library
 -- description:
 license:             BSD3
 license-file:        LICENSE
