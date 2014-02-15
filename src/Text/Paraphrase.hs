@@ -231,7 +231,7 @@ manyFinally p t = addStackTrace "In a list of items with a terminator:"
 {-# INLINE manyFinally #-}
 
 -- | As with 'manyFinally', but handles the case where the terminator
---   parser overlapSt with the element parser.  As such, at each stage
+--   parser overlaps with the element parser.  As such, at each stage
 --   it first tries the terminator parser before attempting to find an
 --   element.
 --
