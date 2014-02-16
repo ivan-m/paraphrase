@@ -13,8 +13,10 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Text.Paraphrase
-  other-modules:         Text.Paraphrase.Types
+  exposed-modules:       Text.Paraphrase
+
+  other-modules:         Text.Paraphrase.Inputs
+                       , Text.Paraphrase.Types
                        , Text.Paraphrase.TextManipulation
   -- other-extensions:
   build-depends:         base >=4.6 && <4.7
