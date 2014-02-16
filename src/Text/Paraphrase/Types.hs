@@ -275,10 +275,10 @@ resultToEither (Partial adjE _cnt) = let e = "More input required."
 newtype Parser s a = P {
   -- Our parser is actually a function of functions!
   runP :: forall r.
-          WithIncremental s   -- The input.
-            (   Failure s   r -- What to do when we fail.
-             -> Success s a r -- What to do when we succeed.
-             -> Result  s   r)
+          ParseState s     -- The input.
+          -> Failure s   r -- What to do when we fail.
+          -> Success s a r -- What to do when we succeed.
+          -> Result  s   r
   }
 
 {-
@@ -322,10 +322,6 @@ rather than directly manipulating the arguments to the 'Failure'
 function due to how 'commit' works.
 
 -}
-
--- An alias to make types involving explicit incremental support
--- easier to read.
-type WithIncremental s r = ParseState s -> r -- Input s -> Additional s -> More -> r
 
 -- The stateful values for parsing.  One large value is used rather
 -- than separating them to help make more manageable and readable.
@@ -410,13 +406,13 @@ type AdjErr = ErrMsg -> ErrMsg
 -- What to do when we fail a parse; @s@ is the input type.
 --
 -- CONVENTION: a value of this type is called something like @fl@.
-type Failure s   r = WithIncremental s (ErrMsg -> Result s r)
+type Failure s   r = ParseState s -> ErrMsg -> Result s r
 
 -- What to do when a parse is successful; @s@ is the input type, @a@
 -- is the result of the parse, @r@ is the output type.
 --
 -- CONVENTION: a value of this type is called something like @sc@.
-type Success s a r = WithIncremental s (a -> Result s r)
+type Success s a r = ParseState s -> a -> Result s r
 
 -- Start the difference list by doing nothing.
 noAdj :: AdjErr
@@ -578,9 +574,7 @@ instance (ParseInput s) => MonadPlus (Parser s) where
 -- @mergeIncremental inc1 inc2@ is used when @inc2@ originally started
 -- as having the same 'received' input as @inc1@, but may have since
 -- received additional input.
-mergeIncremental :: (Monoid s) => WithIncremental s
-                                    (WithIncremental s
-                                      (WithIncremental s r -> r))
+mergeIncremental :: (Monoid s) => ParseState s -> ParseState s -> (ParseState s -> r) -> r
 mergeIncremental pSt1 pSt2 f =
   let !i = input pSt1 <> I (unA $ additional pSt2)
       !a = additional pSt1 <> additional pSt2
@@ -618,7 +612,7 @@ ensure !n = P $ \ pSt fl sc ->
 
 -- The un-common case is split off to avoid recursion in ensure, so
 -- that it can be inlined properly.
-ensure' :: (ParseInput s) => Int -> WithIncremental s (Failure s   r -> Success s s r -> Result  s   r)
+ensure' :: (ParseInput s) => Int -> ParseState s -> Failure s   r -> Success s s r -> Result  s   r
 ensure' !n pSt fl sc = runP (needMoreInput *> go n) pSt fl sc
   where
     go !n' = P $ \ pSt' fl' sc' ->
@@ -648,10 +642,10 @@ needMoreInput = P $ \ pSt fl sc ->
 --
 --   It is assumed that @more pSt == Incomplete@.
 requestInput :: (ParseInput s) =>
-                WithIncremental s
-                  (    WithIncremental s (Result s r) -- Failure case
-                    -> WithIncremental s (Result s r) -- Success case
-                    -> Result s r)
+                ParseState s
+                -> (ParseState s -> (Result s r)) -- Failure case
+                -> (ParseState s -> (Result s r)) -- Success case
+                -> Result s r
 requestInput pSt fl sc = Partial (AE (parseLog pSt)) $ \ s ->
   if isEmpty s
      then fl (pSt { more = Complete })
