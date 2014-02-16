@@ -439,7 +439,7 @@ runParser p inp = resultToEither
 -- | Run a parser, assuming it succeeds.  If the parser fails, use
 --   'error' to display the message.
 runParser' :: (ParseInput s) => Parser s a -> s -> a
-runParser' p pSt = case fst $ runParser p pSt of
+runParser' p inp = case fst $ runParser p inp of
                      Right a       -> a
                      Left (adjE,e) -> error ('\n' : adjustError adjE e)
 
