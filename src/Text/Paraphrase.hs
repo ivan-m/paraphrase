@@ -76,6 +76,7 @@ import Text.Paraphrase.TextManipulation
 import Text.Paraphrase.Types
 
 import Control.Applicative
+import Control.Monad       (when)
 import Data.Monoid
 
 -- -----------------------------------------------------------------------------
@@ -122,11 +123,13 @@ endOfInput = P $ \ pSt fl sc ->
 --   available) to provide a custom error message.
 satisfyWith :: (ParseInput s) => (Token s -> String) -> (Token s -> Bool)
                -> Parser s (Token s)
-satisfyWith toE f = do inp <- ensure 1
-                       let !t = inputHead inp
-                       if f t
-                          then put (inputTail inp) *> pure t
-                          else fail (toE t)
+satisfyWith toE f = do
+  (`when` needMoreInput) =<< isEmpty <$> get
+  inp <- get -- Call get again, as it might have changed
+  let !t = inputHead inp
+  if f t
+     then put (inputTail inp) *> pure t
+     else fail (toE t)
 {-# INLINE satisfyWith #-}
 
 -- | Return the next token from our input if it satisfies the given

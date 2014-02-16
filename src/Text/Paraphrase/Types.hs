@@ -599,27 +599,19 @@ ignoreAdditional :: (Monoid s) => ParseState s -> ParseState s
 ignoreAdditional pSt = pSt { additional = mempty }
 {-# INLINE ignoreAdditional #-}
 
--- | Optimise for the common case of ensuring there's at least one
---   token, as isEmpty is usually O(1) whilst lengthAtLeast might be
---   O(n).
-checkLength :: (ParseInput s) => s -> Int -> Bool
-checkLength s 1 = not $ isEmpty s
-checkLength s n = lengthAtLeast s n
-{-# INLINE checkLength #-}
-
 -- | Make sure that there are at least @n@ 'Token's available.
 needAtLeast :: (ParseInput s) => Int -> Parser s ()
 needAtLeast !n = go
   where
     go = P $ \ pSt fl sc ->
-      if checkLength (unI $ input pSt) n
+      if lengthAtLeast (unI $ input pSt) n
          then sc pSt ()
          else runP (needMoreInput *> go) pSt fl sc
 {-# INLINE needAtLeast #-}
 
 ensure :: (ParseInput s) => Int -> Parser s s
 ensure !n = P $ \ pSt fl sc ->
-      if checkLength (unI $ input pSt) n
+      if lengthAtLeast (unI $ input pSt) n
          then sc pSt (unI $ input pSt)
          else ensure' n pSt fl sc
 {-# INLINE ensure #-}
@@ -630,9 +622,13 @@ ensure' :: (ParseInput s) => Int -> WithIncremental s (Failure s   r -> Success 
 ensure' !n pSt fl sc = runP (needMoreInput *> go n) pSt fl sc
   where
     go !n' = P $ \ pSt' fl' sc' ->
-      if checkLength (unI $ input pSt') n'
+      if lengthAtLeast (unI $ input pSt') n'
          then sc' pSt' (unI $ input pSt')
          else runP (needMoreInput *> go n') pSt' fl' sc'
+
+get :: Parser s s
+get = P $ \ pSt _fl sc -> sc pSt (unI $ input pSt)
+{-# INLINE get #-}
 
 put :: s -> Parser s ()
 put s = P $ \ pSt _fl sc -> sc (pSt { input = I s }) ()
