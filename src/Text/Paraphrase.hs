@@ -82,19 +82,6 @@ import Data.Monoid
 -- -----------------------------------------------------------------------------
 -- Commitment
 
--- | Prevent any backtracking from taking place by emphasising that
---   any failures from this parser are more severe than usual.
---
---   That is, @commit p1 \<|\> p2@ is equivalent to just @p1@ (though
---   also preventing any other usage of @'<|>'@ that might occur).
-commit :: Parser s a -> Parser s a
-commit p = P $ \ pSt _fl sc ->
-                -- We commit by prohibiting external sources from
-                -- overriding our failure function (by just ignoring
-                -- provided Failure values).
-                runP p pSt failure sc
-{-# INLINE commit #-}
-
 -- | A combination of 'fail' and 'commit': specify a failure that
 --   cannot be recovered from.
 failBad :: String -> Parser s a

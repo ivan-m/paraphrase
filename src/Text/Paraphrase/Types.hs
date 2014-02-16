@@ -504,13 +504,15 @@ instance (ParseInput s) => Alternative (Parser s) where
   many v = many_v
     where
       many_v = some_v <|> pure []
-      some_v = (:) <$> v <*> many_v
+      some_v = do a <- v
+                  commit ((a:) <$> many_v)
   {-# INLINE many #-}
 
   some v = some_v
     where
       many_v = some_v <|> pure []
-      some_v = (:) <$> v <*> many_v
+      some_v = do a <- v
+                  commit ((a:) <$> many_v)
   {-# INLINE some #-}
 
 onFail :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
@@ -562,6 +564,22 @@ instance (ParseInput s) => MonadPlus (Parser s) where
 
   mplus = onFail
   {-# INLINE mplus #-}
+
+-- -----------------------------------------------------------------------------
+-- Commitment
+
+-- | Prevent any backtracking from taking place by emphasising that
+--   any failures from this parser are more severe than usual.
+--
+--   That is, @commit p1 \<|\> p2@ is equivalent to just @p1@ (though
+--   also preventing any other usage of @'<|>'@ that might occur).
+commit :: Parser s a -> Parser s a
+commit p = P $ \ pSt _fl sc ->
+               -- We commit by prohibiting external sources from
+               -- overriding our failure function (by just ignoring
+               -- provided Failure values).
+               runP p pSt failure sc
+{-# INLINE commit #-}
 
 -- -----------------------------------------------------------------------------
 -- Incremental support
