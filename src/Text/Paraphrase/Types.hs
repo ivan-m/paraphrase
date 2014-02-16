@@ -329,7 +329,7 @@ function due to how 'commit' works.
 -- CONVENTION: a value of this type is called something like @pSt@.
 data ParseState s = PS { input      :: !s
                          -- ^ The input that we're currently parsing.
-                       , additional :: !s
+                       , additional :: s
                          -- ^ Any additional input that has been
                          --   provided.  Note that we do not
                          --   explicitly parse through this value; it
@@ -590,7 +590,7 @@ commit p = P $ \ pSt _fl sc ->
 mergeIncremental :: (Monoid s) => ParseState s -> ParseState s -> (ParseState s -> r) -> r
 mergeIncremental pSt1 pSt2 f =
   let !i = input pSt1 <> additional pSt2 -- Add any additional data we might have received.
-      !a = additional pSt1 <> additional pSt2
+      a = additional pSt1 <> additional pSt2
       !m = more pSt1  <> more pSt2
   in f (pSt1 { input = i, additional = a, more = m })
 {-# INLINE mergeIncremental #-}
