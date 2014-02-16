@@ -101,8 +101,12 @@ failBad = commit . fail
 
 -- | Return the next token from the input source.
 next :: (ParseInput s) => Parser s (Token s)
-next = satisfy (const True)
-{-# INLINE next #-}
+next = do
+ isEmpty <$> get >>= (`when` needMoreInput)
+ !inp <- get -- Call get again, as it might have changed.
+ put (inputTail inp)
+ pure (inputHead inp)
+-- Inlining actually makes this slower... :o
 
 -- | This parser succeeds if we've reached the end of our input, and
 --   fails otherwise.
