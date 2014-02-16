@@ -129,6 +129,7 @@ instance ParseInput LB.ByteString where
 
   -- length is O(n)
   lengthAtLeast bs n = LB.length bs >= fromIntegral n
+  {-# INLINE lengthAtLeast #-}
 
   breakWhen = LB.span
 
@@ -179,6 +180,7 @@ instance (ParseInput s, Token s ~ Word8) => ParseInput (AsChar8 s) where
   isEmpty = isEmpty . unChar8
 
   lengthAtLeast s = lengthAtLeast (unChar8 s)
+  {-# INLINE lengthAtLeast #-}
 
   breakWhen f = (AsChar8 *** AsChar8) . breakWhen (f . w2c) . unChar8
 
