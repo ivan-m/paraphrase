@@ -41,121 +41,121 @@ import Data.Monoid
 --   need to examine the methods of this class.
 class (Monoid s) => ParseInput s where
 
- -- | The elements of this input type.
- type Token s
+  -- | The elements of this input type.
+  type Token s
 
- -- | Obtain the first token in the input.  Only used when the input
- --   isn't empty, honest!
- inputHead :: s -> Token s
+  -- | Obtain the first token in the input.  Only used when the input
+  --   isn't empty, honest!
+  inputHead :: s -> Token s
 
- -- | Return all but the first token of the input.  Only used when
- --   the input isn't empty, honest!
- inputTail :: s -> s
+  -- | Return all but the first token of the input.  Only used when
+  --   the input isn't empty, honest!
+  inputTail :: s -> s
 
- -- | Is the input empty?
- isEmpty :: s -> Bool
- isEmpty = not . (`lengthAtLeast` 1)
+  -- | Is the input empty?
+  isEmpty :: s -> Bool
+  isEmpty = not . (`lengthAtLeast` 1)
 
- -- | Do we have at least @n@ tokens available?
- lengthAtLeast :: s -> Int -> Bool
+  -- | Do we have at least @n@ tokens available?
+  lengthAtLeast :: s -> Int -> Bool
 
- -- | Split the stream where the predicate is no longer satisfied
- --   (that is, the @fst@ component contains the largest possible
- --   prefix where all values satisfy the predicate, and the @snd@
- --   component contains the latter).
- breakWhen :: (Token s -> Bool) -> s -> (s,s)
+  -- | Split the stream where the predicate is no longer satisfied
+  --   (that is, the @fst@ component contains the largest possible
+  --   prefix where all values satisfy the predicate, and the @snd@
+  --   component contains the latter).
+  breakWhen :: (Token s -> Bool) -> s -> (s,s)
 
 instance ParseInput [a] where
- type Token [a] = a
+  type Token [a] = a
 
- inputHead = head
+  inputHead = head
 
- inputTail = tail
+  inputTail = tail
 
- isEmpty = null
+  isEmpty = null
 
- lengthAtLeast as n = not . null . drop (n-1) $ as
- {-# INLINE lengthAtLeast #-}
+  lengthAtLeast as n = not . null . drop (n-1) $ as
+  {-# INLINE lengthAtLeast #-}
 
- breakWhen = span
+  breakWhen = span
 
 instance ParseInput SB.ByteString where
- type Token SB.ByteString = Word8
+  type Token SB.ByteString = Word8
 
- inputHead = SB.unsafeHead
+  inputHead = SB.unsafeHead
 
- inputTail = SB.unsafeTail
+  inputTail = SB.unsafeTail
 
- isEmpty = SB.null
+  isEmpty = SB.null
 
- -- length is O(1)
- lengthAtLeast bs n = SB.length bs >= n
- {-# INLINE lengthAtLeast #-}
+  -- length is O(1)
+  lengthAtLeast bs n = SB.length bs >= n
+  {-# INLINE lengthAtLeast #-}
 
- breakWhen = SB.span
+  breakWhen = SB.span
 
 instance ParseInput LB.ByteString where
- type Token LB.ByteString = Word8
+  type Token LB.ByteString = Word8
 
- inputHead = LB.head
+  inputHead = LB.head
 
- inputTail = LB.tail
+  inputTail = LB.tail
 
- isEmpty = LB.null
+  isEmpty = LB.null
 
- -- length is O(n)
- lengthAtLeast bs n = LB.length bs >= fromIntegral n
- {-# INLINE lengthAtLeast #-}
+  -- length is O(n)
+  lengthAtLeast bs n = LB.length bs >= fromIntegral n
+  {-# INLINE lengthAtLeast #-}
 
- breakWhen = LB.span
+  breakWhen = LB.span
 
 instance ParseInput ST.Text where
- type Token ST.Text = Char
+  type Token ST.Text = Char
 
- inputHead = ST.unsafeHead
+  inputHead = ST.unsafeHead
 
- inputTail = ST.unsafeTail
+  inputTail = ST.unsafeTail
 
- isEmpty = ST.null
+  isEmpty = ST.null
 
- -- We do @`quot` 2@ because UTF-16 (which Text is implemented with)
- -- code points are either 1 or 2 Word16 values.  As such do this
- -- O(1) test first in case it suffices before we do the O(n) case
- -- for the real length.
- lengthAtLeast t n = (ST.lengthWord16 t `quot` 2) >= n || ST.length t >= n
- {-# INLINE lengthAtLeast #-}
+  -- We do @`quot` 2@ because UTF-16 (which Text is implemented with)
+  -- code points are either 1 or 2 Word16 values.  As such do this
+  -- O(1) test first in case it suffices before we do the O(n) case
+  -- for the real length.
+  lengthAtLeast t n = (ST.lengthWord16 t `quot` 2) >= n || ST.length t >= n
+  {-# INLINE lengthAtLeast #-}
 
- breakWhen = ST.span
+  breakWhen = ST.span
 
 instance ParseInput LT.Text where
- type Token LT.Text = Char
+  type Token LT.Text = Char
 
- inputHead = LT.head
+  inputHead = LT.head
 
- inputTail = LT.tail
+  inputTail = LT.tail
 
- isEmpty = LT.null
+  isEmpty = LT.null
 
- -- Doesn't seem to be any real alternative but to do the O(n)
- -- length.
- lengthAtLeast t n = LT.length t >= fromIntegral n
- {-# INLINE lengthAtLeast #-}
+  -- Doesn't seem to be any real alternative but to do the O(n)
+  -- length.
+  lengthAtLeast t n = LT.length t >= fromIntegral n
+  {-# INLINE lengthAtLeast #-}
 
- breakWhen = LT.span
+  breakWhen = LT.span
 
 newtype AsChar8 s = AsChar8 { unChar8 :: s }
-                   deriving (Eq, Ord, Show, Read, IsString, Monoid, NFData)
+                    deriving (Eq, Ord, Show, Read, IsString, Monoid, NFData)
 
 instance (ParseInput s, Token s ~ Word8) => ParseInput (AsChar8 s) where
- type Token (AsChar8 s) = Char
+  type Token (AsChar8 s) = Char
 
- inputHead (AsChar8 s) = w2c $! inputHead s
+  inputHead (AsChar8 s) = w2c $! inputHead s
 
- inputTail = AsChar8 . inputTail . unChar8
+  inputTail = AsChar8 . inputTail . unChar8
 
- isEmpty = isEmpty . unChar8
+  isEmpty = isEmpty . unChar8
 
- lengthAtLeast s = lengthAtLeast (unChar8 s)
- {-# INLINE lengthAtLeast #-}
+  lengthAtLeast s = lengthAtLeast (unChar8 s)
+  {-# INLINE lengthAtLeast #-}
 
- breakWhen f = (AsChar8 *** AsChar8) . breakWhen (f . w2c) . unChar8
+  breakWhen f = (AsChar8 *** AsChar8) . breakWhen (f . w2c) . unChar8
