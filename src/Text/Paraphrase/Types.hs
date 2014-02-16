@@ -1,4 +1,5 @@
-{-# LANGUAGE BangPatterns, RankNTypes, TypeFamilies #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts, OverloadedStrings, RankNTypes,
+             StandaloneDeriving, TypeFamilies, UndecidableInstances #-}
 {- |
    Module      : Text.Paraphrase.Types
    Description : Definition of types
@@ -11,13 +12,15 @@
  -}
 module Text.Paraphrase.Types where
 
-import Text.Paraphrase.Inputs           (ParseInput (..))
-import Text.Paraphrase.TextManipulation
+import Text.Paraphrase.Inputs (ParseInput (..))
 
-import Control.Applicative
-import Control.DeepSeq     (NFData (rnf))
-import Control.Monad       (MonadPlus (..))
-import Data.Monoid
+import           Control.Applicative
+import           Control.DeepSeq     (NFData (rnf))
+import           Control.Monad       (MonadPlus (..))
+import qualified Data.Foldable       as F
+import           Data.Monoid
+import qualified Data.Sequence       as S
+import           Data.String         (IsString (..))
 
 -- -----------------------------------------------------------------------------
 
@@ -49,71 +52,51 @@ See also the provided conventions for referring to values of type
 --   function that will produce any additional error messages (stack
 --   traces, etc.) if so desired.
 data Result s a = Success s a
-                | Failure s AdjustError String
-                | Partial AdjustError (s -> Result s a)
+                | Failure s (ParseLog s)
+                | Partial   (ParseLog s) (s -> Result s a)
                   -- ^ Indicates that the parser requires more input
                   --   to continue.
                   --
-                  --   The 'AdjustError' is for use with
+                  --   The 'ParseLog' is for use with
                   --   'resultToEither' and can be safely ignored in
                   --   your own code.
 
--- | Nonsensical for 'Failure' and 'Partial'.
-instance (Show s, Show a) => Show (Result s a) where
+-- | Nonsensical for 'Partial'.
+instance (ParseInput s, Show s, Show (Token s), Show a) => Show (Result s a) where
   showsPrec d r = showParen (d > 10) $
                     case r of
-                      Success s a       -> showString "Success "
-                                           . shows s
-                                           . showString " "
-                                           . shows a
-                      Failure s adjE e -> showString "Failure "
-                                          . shows s
-                                          . showString " "
-                                          . shows adjE
-                                          . showString " "
-                                          . shows e
-                      Partial adjE _p  -> showString "Partial "
-                                          . shows adjE
-                                          . showString " "
-                                          . showString "\"<continuation>\""
+                      Success s a   -> showString "Success "
+                                       . shows s
+                                       . showString " "
+                                       . shows a
+                      Failure s pl  -> showString "Failure "
+                                       . shows s
+                                       . showString " "
+                                       . shows pl
+                      Partial pl _p -> showString "Partial "
+                                       . shows pl
+                                       . showString " "
+                                       . showString "\"<continuation>\""
 
 instance Functor (Result s) where
-  fmap f (Success s a)      = Success s (f a)
-  fmap _ (Failure s adjE e) = Failure s adjE e
-  fmap f (Partial adjE cnt) = Partial adjE (fmap f . cnt)
+  fmap f (Success s a)    = Success s (f a)
+  fmap _ (Failure s pl)   = Failure s pl
+  fmap f (Partial pl cnt) = Partial pl (fmap f . cnt)
 
-instance (NFData s, NFData a) => NFData (Result s a) where
-  rnf (Success s a)      = rnf s `seq` rnf a
-  rnf (Failure s adjE e) = rnf s `seq` rnf adjE `seq` rnf e
-  rnf (Partial adjE _)   = rnf adjE
-
--- | A transformation on an error message to get any additional
---   messages provided by combinators (e.g. to provide a stack trace).
-newtype AdjustError = AE { adjustError :: String -> String
-                           -- ^ Adjust an error message to obtain any
-                           --   additional stack traces, etc. that may
-                           --   be available.
-                         }
-
--- | A nonsensical definition just to allow data types containing this
---   value to have valid @Show@ instances.
-instance Show AdjustError where
-  show _ = "\"<AdjustError>\""
-
--- Define an instance in case we change the type later.
-instance NFData AdjustError where
-  rnf _ = ()
+instance (ParseInput s, NFData s, NFData (Token s), NFData a) => NFData (Result s a) where
+  rnf (Success s a)  = rnf s `seq` rnf a
+  rnf (Failure s pl) = rnf s `seq` rnf pl
+  rnf (Partial pl _) = rnf pl
 
 -- | A convenience alias for use with 'resultToEither' to avoid having
 --   to type the entire type out.
-type EitherResult a = Either (AdjustError, String) a
+type EitherResult s a = Either (ParseLog s) a
 
 -- | Convert the result into an 'Either' value.
-resultToEither :: (ParseInput s) => Result s a -> (EitherResult a, s)
-resultToEither (Success s a)       = (Right a, s)
-resultToEither (Failure s adjE e)  = (Left (adjE,e), s)
-resultToEither (Partial adjE _cnt) = let e = "More input required."
-                                     in (Left (adjE,e),mempty)
+resultToEither :: (ParseInput s) => Result s a -> (EitherResult s a, s)
+resultToEither (Success s a)     = (Right a, s)
+resultToEither (Failure s pl)    = (Left pl, s)
+resultToEither (Partial pl _cnt) = (Left (pl |> "More input required"), mempty)
 
 -- -----------------------------------------------------------------------------
 -- Parser definition
@@ -195,25 +178,19 @@ data ParseState s = PS { input      :: !s
                          --   provided input.
                        , more       :: !More
                        -- ^ Is there any more input available?
-                       , parseLog   :: !AdjErr
+                       , parseLog   :: !(ParseLog s)
                        }
 
-instance (Show s) => Show (ParseState s) where
-  showsPrec d pSt = showParen (d > 10) $
-    showString "PS { input = "
-    . shows (input pSt)
-    . showString ", additional = "
-    . shows (additional pSt)
-    . showString ", more = "
-    . shows (more pSt)
-    . showString ", parseLog = \"<error log>\" }"
-
+deriving instance (ParseInput s, Eq     s, Eq     (Token s)) => Eq     (ParseState s)
+deriving instance (ParseInput s, Ord    s, Ord    (Token s)) => Ord    (ParseState s)
+deriving instance (ParseInput s, Show   s, Show   (Token s)) => Show   (ParseState s)
+deriving instance (ParseInput s, Read   s, Read   (Token s)) => Read   (ParseState s)
 
 blankState :: (Monoid s) => ParseState s
 blankState = PS { input      = mempty
                 , additional = mempty
                 , more       = mempty
-                , parseLog   = noAdj
+                , parseLog   = mempty
                 }
 
 completeState :: (Monoid s) => s -> ParseState s
@@ -239,23 +216,10 @@ instance Monoid More where
   mappend c@Complete _ = c
   mappend _          m = m
 
--- An alias for internal purposes to signify what a 'String' input
--- means.
---
--- CONVENTION: a value of this type is called something like @e@.
-type ErrMsg = String
-
--- How to /Adj/ust an /Err/or message.  This is an implicit difference
--- list.  This is used to be able to add additional messages to an
--- error failure such as a stack trace of all combinators being used.
---
--- CONVENTION: a value of this type is called something like @adjE@.
-type AdjErr = ErrMsg -> ErrMsg
-
 -- What to do when we fail a parse; @s@ is the input type.
 --
 -- CONVENTION: a value of this type is called something like @fl@.
-type Failure s   r = ParseState s -> ErrMsg -> Result s r
+type Failure s   r = ParseState s -> ParseError s -> Result s r
 
 -- What to do when a parse is successful; @s@ is the input type, @a@
 -- is the result of the parse, @r@ is the output type.
@@ -263,17 +227,10 @@ type Failure s   r = ParseState s -> ErrMsg -> Result s r
 -- CONVENTION: a value of this type is called something like @sc@.
 type Success s a r = ParseState s -> a -> Result s r
 
--- Start the difference list by doing nothing.
-noAdj :: AdjErr
-noAdj = id
-
 -- Dum... Dum... Dum... DUMMMMMM!!!  The parsing has gone all wrong,
 -- so apply the error-message adjustment and stop doing anything.
 failure :: Failure s r
-failure !pSt e = Failure (input pSt) addE' e
-  where
-    addE' = AE $ parseLog pSt . indMsg
-    indMsg = allButFirstLine (indent lenStackTracePoint)
+failure !pSt e = Failure (input pSt) (parseLog pSt |> e)
 
 -- Hooray!  We're all done here, and a job well done!
 successful :: Success s a a
@@ -286,16 +243,72 @@ parseInput p inp = runP p (incompleteState inp) failure successful
 
 -- | Run a parser.
 runParser :: (ParseInput s) => Parser s a -> s
-             -> (EitherResult a, s)
-runParser p inp = resultToEither
-                    (runP p (completeState inp) failure successful)
+             -> (EitherResult s a, s)
+runParser p inp = resultToEither (runP p (completeState inp) failure successful)
 
 -- | Run a parser, assuming it succeeds.  If the parser fails, use
 --   'error' to display the message.
-runParser' :: (ParseInput s) => Parser s a -> s -> a
+runParser' :: (ParseInput s, Show s, Show (Token s)) => Parser s a -> s -> a
 runParser' p inp = case fst $ runParser p inp of
-                     Right a       -> a
-                     Left (adjE,e) -> error ('\n' : adjustError adjE e)
+                     Right a -> a
+                     Left pl -> error ('\n' : prettyLog pl)
+
+-- -----------------------------------------------------------------------------
+-- Error Handling
+
+-- | The possible errors that could arise when parsing.
+data ParseError s
+ = UnexpectedEndOfInput
+ | ExpectedEndOfInput s
+ | ExpectedButFound (Token s) (Token s) -- ^ The token that was expected/required.
+ | UnexpectedToken (Token s)            -- ^ Token found that did not match what was required/expected.
+ | MissingItemCount Int s               -- ^ Expected this many more items that were not found.
+ | Message String                       -- ^ Can be created via the @OverloadedStrings@ pragma.
+ | Committed
+ | NamedSubLogs [(String, ParseLog s)]
+ | SubLog (ParseLog s)
+
+-- Need to make these instances separate for GHC to be happy; hence
+-- also the various language pragmas above.
+deriving instance (ParseInput s, Eq   s, Eq   (Token s)) => Eq   (ParseError s)
+deriving instance (ParseInput s, Ord  s, Ord  (Token s)) => Ord  (ParseError s)
+deriving instance (ParseInput s, Show s, Show (Token s)) => Show (ParseError s)
+deriving instance (ParseInput s, Read s, Read (Token s)) => Read (ParseError s)
+
+instance (ParseInput s, NFData s, NFData (Token s)) => NFData (ParseError s) where
+  rnf (ExpectedEndOfInput s) = rnf s
+  rnf (ExpectedButFound e f) = rnf e `seq` rnf f
+  rnf (UnexpectedToken t)    = rnf t
+  rnf (MissingItemCount n s) = rnf n `seq` rnf s
+  rnf (Message msg)          = rnf msg
+  rnf (NamedSubLogs spls)    = rnf spls
+  rnf (SubLog pl)            = rnf pl
+  rnf _                      = ()
+
+instance IsString (ParseError s) where
+  fromString = Message
+
+type ParseLog s = S.Seq (ParseError s)
+
+-- | Add a @ParseError@ to the end of the log.
+(|>) :: ParseLog s -> ParseError s -> ParseLog s
+(|>) = (S.|>)
+
+infixl 5 |>
+
+-- | Fail with a specific error.  When @OverloadedStrings@ is enabled,
+--   this becomes equivalent to 'fail' (at least for literal 'String's).
+failWith :: ParseError s -> Parser s a
+failWith e = P $ \ !pSt fl _sc -> fl pSt e
+{-# INLINE failWith #-}
+
+addToLog :: ParseState s -> ParseError s -> ParseState s
+addToLog pSt pe = pSt { parseLog = parseLog pSt |> pe }
+{-# INLINE addToLog #-}
+
+-- | Create a pretty-printed version of the log.
+prettyLog :: (ParseInput s, Show s, Show (Token s)) => ParseLog s -> String
+prettyLog = unlines . map show . F.toList
 
 -- -----------------------------------------------------------------------------
 -- Instances
@@ -359,14 +372,14 @@ instance (ParseInput s) => Alternative (Parser s) where
     where
       many_v = some_v <|> pure []
       some_v = do a <- v
-                  commit ((a:) <$> many_v)
+                  commitNoLog ((a:) <$> many_v)
   {-# INLINE many #-}
 
   some v = some_v
     where
       many_v = some_v <|> pure []
       some_v = do a <- v
-                  commit ((a:) <$> many_v)
+                  commitNoLog ((a:) <$> many_v)
   {-# INLINE some #-}
 
 onFail :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
@@ -403,7 +416,7 @@ instance Monad (Parser s) where
   {-# INLINE fail #-}
 
 failP :: String -> Parser s a
-failP e = P $ \ !pSt fl _sc -> fl pSt e
+failP = failWith . Message
 {-# INLINE failP #-}
 
 bindP ::  Parser s a -> (a -> Parser s b) -> Parser s b
@@ -422,18 +435,16 @@ instance (ParseInput s) => MonadPlus (Parser s) where
 -- -----------------------------------------------------------------------------
 -- Commitment
 
--- | Prevent any backtracking from taking place by emphasising that
---   any failures from this parser are more severe than usual.
---
---   That is, @commit p1 \<|\> p2@ is equivalent to just @p1@ (though
---   also preventing any other usage of @'<|>'@ that might occur).
-commit :: Parser s a -> Parser s a
-commit p = P $ \ !pSt _fl sc ->
-               -- We commit by prohibiting external sources from
-               -- overriding our failure function (by just ignoring
-               -- provided Failure values).
-               runP p pSt failure sc
-{-# INLINE commit #-}
+-- For internal use only (as it's used in the definitions of many and
+-- some, and we want to cut down on noise).  See 'commit' from
+-- Text.Paraphrase instead.
+commitNoLog :: Parser s a -> Parser s a
+commitNoLog p = P $ \ !pSt _fl sc ->
+                    -- We commit by prohibiting external sources from
+                    -- overriding our failure function (by just ignoring
+                    -- provided Failure values).
+                    runP p pSt failure sc
+{-# INLINE commitNoLog #-}
 
 -- -----------------------------------------------------------------------------
 -- Some basic parsers
@@ -458,6 +469,7 @@ mergeIncremental !pSt1 !pSt2 f =
       a = additional pSt1 <> additional pSt2
       !m = more pSt1  <> more pSt2
   in f (pSt1 { input = i, additional = a, more = m })
+        -- Use pSt1 here so we get its parseLog value.
 {-# INLINE mergeIncremental #-}
 
 -- Used when - to start with - @pSt2 = ignoreAdditional inp1@, but

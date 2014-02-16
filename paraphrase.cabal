@@ -18,10 +18,10 @@ library
   other-modules:         Text.Paraphrase.Additional
                        , Text.Paraphrase.Inputs
                        , Text.Paraphrase.Types
-                       , Text.Paraphrase.TextManipulation
   -- other-extensions:
   build-depends:         base >=4.6 && <4.7
                        , deepseq
+                       , containers
                        , bytestring
                        , text >= 0.11.3.1
 

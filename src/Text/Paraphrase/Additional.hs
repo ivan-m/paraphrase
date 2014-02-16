@@ -50,8 +50,8 @@ ensure' !n !pSt fl sc = runP (needMoreInput *> go n) pSt fl sc
 needMoreInput :: (ParseInput s) => Parser s ()
 needMoreInput = P $ \ !pSt fl sc ->
  if more pSt == Complete
-    then fl pSt "Not enough input."
-    else let fl' pSt' = fl pSt' "Not enough input."
+    then fl pSt UnexpectedEndOfInput
+    else let fl' pSt' = fl pSt' UnexpectedEndOfInput
              sc' pSt' = sc pSt' ()
          in requestInput pSt fl' sc'
 
@@ -65,7 +65,7 @@ requestInput :: (ParseInput s) =>
                -> (ParseState s -> (Result s r)) -- Failure case
                -> (ParseState s -> (Result s r)) -- Success case
                -> Result s r
-requestInput !pSt fl sc = Partial (AE (parseLog pSt)) $ \ s ->
+requestInput !pSt fl sc = Partial (parseLog pSt) $ \ s ->
  if isEmpty s
     then fl (pSt { more = Complete })
     else sc (pSt { input = input pSt <> s, additional = additional pSt <> s})

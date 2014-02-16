@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts, OverloadedStrings #-}
 {- |
    Module      : Text.Paraphrase
    Description : Experimental polyparse reimplementation
@@ -21,8 +21,6 @@ module Text.Paraphrase
        , runParser'
          -- ** Parsing results
        , Result (..)
-       , AdjustError
-       , adjustError
        , resultToEither
        , EitherResult
          -- ** Parser input
@@ -31,6 +29,7 @@ module Text.Paraphrase
 
          -- * Parser combinators
        , next
+       , token
        , satisfy
        , satisfyWith
        , endOfInput
@@ -55,17 +54,16 @@ module Text.Paraphrase
        , chainParsers
 
          -- * Error reporting
+       , ParseError (..)
+       , ParseLog
+       , failWith
+       , prettyLog
          -- ** Convenience functions
          -- $stacktraces
        , failMessage
        , addStackTrace
        , addStackTraceBad
          -- ** Low-level error adjustment
-       , adjustErr
-       , adjustErrBad
-       , indent
-       , indentLine
-       , allButFirstLine
        , oneOf'
 
          -- * Re-exported for extra combinators
@@ -74,7 +72,6 @@ module Text.Paraphrase
 
 import Text.Paraphrase.Additional
 import Text.Paraphrase.Inputs
-import Text.Paraphrase.TextManipulation
 import Text.Paraphrase.Types
 
 import Control.Applicative
@@ -83,6 +80,15 @@ import Data.Monoid
 
 -- -----------------------------------------------------------------------------
 -- Commitment
+
+-- | Prevent any backtracking from taking place by emphasising that
+--   any failures from this parser are more severe than usual.
+--
+--   That is, @commit p1 \<|\> p2@ is equivalent to just @p1@ (though
+--   also preventing any other usage of @'<|>'@ that might occur).
+commit :: Parser s a -> Parser s a
+commit = addStackTrace Committed . commitNoLog
+{-# INLINE commit #-}
 
 -- | A combination of 'fail' and 'commit': specify a failure that
 --   cannot be recovered from.
@@ -104,13 +110,13 @@ endOfInput :: (ParseInput s) => Parser s ()
 endOfInput = P $ \ !pSt fl sc ->
                    if isEmpty (input pSt)
                       then sc pSt ()
-                      else fl pSt "Expected end of input"
+                      else fl pSt (ExpectedEndOfInput (input pSt))
 {-# INLINE endOfInput #-}
 
 -- | Return the next token from our input if it satisfies the given
 --   predicate.  Unlike 'satisfy', use the token (if one was
 --   available) to provide a custom error message.
-satisfyWith :: (ParseInput s) => (Token s -> String) -> (Token s -> Bool)
+satisfyWith :: (ParseInput s) => (Token s -> ParseError s) -> (Token s -> Bool)
                -> Parser s (Token s)
 satisfyWith toE f = do
   (`when` needMoreInput) =<< isEmpty <$> get
@@ -118,14 +124,18 @@ satisfyWith toE f = do
   let !t = inputHead inp
   if f t
      then put (inputTail inp) *> pure t
-     else fail (toE t)
+     else failWith (toE t)
 {-# INLINE satisfyWith #-}
 
 -- | Return the next token from our input if it satisfies the given
 --   predicate.
 satisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s (Token s)
-satisfy = satisfyWith (const "Token did not satisfy predicate")
+satisfy = satisfyWith UnexpectedToken
 {-# INLINE satisfy #-}
+
+token :: (ParseInput s, Eq (Token s)) => Token s -> Parser s (Token s)
+token t = satisfyWith (ExpectedButFound t) (t==)
+{-# INLINE token #-}
 
 -- | Return the result of the first parser in the list that succeeds.
 oneOf :: (ParseInput s) => [Parser s a] -> Parser s a
@@ -252,8 +262,8 @@ manyFinally' p t = addStackTrace "In a list of items with a terminator:" go
 exactly :: Int -> Parser s a -> Parser s [a]
 exactly n p = mapM toP $ enumFromThenTo n (n-1) 1
   where
-    toP = (`addStackTrace` p) . msg
-    msg c = "Expecting precisely " ++ show c ++ " item(s)."
+    toP c = do s <- get
+               (MissingItemCount c s) `addStackTrace` p
 {-# INLINE exactly #-}
 
 -- | @upto n p@ will return a list of no more than @n@ values.
@@ -295,9 +305,8 @@ chainParsers pb pa
               -- have to worry about that here, hence why it's safe to
               -- use runParser.
               case fst $ runParser pb' inpB of
-                Right a         -> sc pStA' a
-                Left (adjErr,e) -> let adjE' = parseLog pStA' . adjustError adjErr
-                                   in fl (pStA' { parseLog = adjE' }) e
+                Right a  -> sc pStA' a
+                Left plb -> fl pStA' (Message "Failure running chained parser") -- SubLog plb
   where
     pb' = addStackTrace "Running chained parser:" pb
 {-# INLINE chainParsers #-}
@@ -326,41 +335,16 @@ failMessage :: (ParseInput s) => String -> Parser s a -> Parser s a
 failMessage e = (`onFail` fail e)
 {-# INLINE failMessage #-}
 
-addTraceMessage :: String -> Parser s ()
-addTraceMessage m = addStackTrace m (pure ())
-
 -- | A convenient function to produce (reasonably) pretty stack traces
 --   for parsing failures.
-addStackTrace :: String -> Parser s a -> Parser s a
-addStackTrace msg = (`adjustErr` adjE)
-  where
-    adjE = (msg'++) . (('\n':stackTraceLine:'\n':stackTracePoint)++)
-
-    -- Need to do this so that when the next error message is added,
-    -- it will be indented properly.
-    msg' = allButFirstLine ind msg
-
-    ind = (stackTraceLine:) . indentLine lenStackTraceMarker
-{-# INLINE addStackTrace #-}
+addStackTrace :: ParseError s -> Parser s a -> Parser s a
+addStackTrace e p = P $ \ !pSt fl sc -> runP p (pSt `addToLog` e) fl sc
 
 -- | As with 'addStackTrace' but raise the severity of the error (same
 --   relationship as between 'failBad' and 'fail').
-addStackTraceBad :: String -> Parser s a -> Parser s a
-addStackTraceBad msg = addStackTrace msg . commit
+addStackTraceBad :: ParseError s -> Parser s a -> Parser s a
+addStackTraceBad e = addStackTrace e . commit
 {-# INLINE addStackTraceBad #-}
-
--- | Apply the transformation function on any error messages that
---   might arise from the provided parser.
-adjustErr :: Parser s a -> (String -> String) -> Parser s a
-adjustErr p f = P $ \ !pSt fl sc ->
-                       runP p (pSt { parseLog = parseLog pSt . f }) fl sc
-{-# INLINE adjustErr #-}
-
--- | As with 'adjustErr', but also raises the severity (same
---   relationship as between 'failBad' and 'fail').
-adjustErrBad :: Parser s a -> (String -> String) -> Parser s a
-adjustErrBad = adjustErr . commit
-{-# INLINE adjustErrBad #-}
 
 -- | As with 'oneOf', but each potential parser is tagged with a
 --   \"name\" for error reporting.  The process is as follows:
@@ -376,8 +360,8 @@ adjustErrBad = adjustErr . commit
 oneOf' :: (ParseInput s) => [(String,Parser s a)] -> Parser s a
 oneOf' = go id
   where
-    go errs [] = fail $ "Failed to parse any of the possible choices:\n"
-                        ++ indent 2 (concatMap showErr (errs []))
+    go errs [] = failWith (NamedSubLogs (errs []))
+
     -- Can't use <|> here as we want access to `e'.  Otherwise this is
     -- pretty much a duplicate of onFail.
     go errs ((nm,p):ps) = P $ \ !pSt fl sc ->
@@ -385,12 +369,10 @@ oneOf' = go id
           -- When we fail (and the parser isn't committed), recurse
           -- and try the next parser whilst saving the error message.
           fl' !pSt' e = mergeIncremental pSt pSt' $
-            \ !pSt'' -> runP (go' $ parseLog pSt' e) pSt'' fl sc
+            \ !pSt'' -> runP (go' $ parseLog pSt' |> e) pSt'' fl sc
 
           sc' !pSt' = sc (prependAdditional pSt pSt')
           -- Put back in the original additional input.
-      in runP p (ignoreAdditional pSt { parseLog = noAdj }) fl' sc'
+      in runP p (ignoreAdditional pSt { parseLog = mempty }) fl' sc'
            -- Note: we only consider the AdjErr from the provided
            -- parser, not the global one.
-
-    showErr (nm,e) = "* " ++ nm ++ ":\n" ++ indent 4 e ++ "\n"
