@@ -270,14 +270,14 @@ noAdj = id
 -- Dum... Dum... Dum... DUMMMMMM!!!  The parsing has gone all wrong,
 -- so apply the error-message adjustment and stop doing anything.
 failure :: Failure s r
-failure pSt e = Failure (input pSt) addE' e
+failure !pSt e = Failure (input pSt) addE' e
   where
     addE' = AE $ parseLog pSt . indMsg
     indMsg = allButFirstLine (indent lenStackTracePoint)
 
 -- Hooray!  We're all done here, and a job well done!
 successful :: Success s a a
-successful pSt = Success (input pSt)
+successful !pSt = Success (input pSt)
 
 -- | Run the parser on the provided input, providing the raw 'Result'
 --   value.
@@ -305,8 +305,8 @@ instance Functor (Parser s) where
   {-# INLINE fmap #-}
 
 fmapP :: (a -> b) -> Parser s a -> Parser s b
-fmapP f pa = P $ \ pSt fl sc ->
-                 runP pa pSt fl $ \ pSt' a -> sc pSt' (f a)
+fmapP f pa = P $ \ !pSt fl sc ->
+                 runP pa pSt fl $ \ !pSt' a -> sc pSt' (f a)
 {-# INLINE fmapP #-}
 
 instance Applicative (Parser s) where
@@ -323,29 +323,29 @@ instance Applicative (Parser s) where
   {-# INLINE (<*) #-}
 
 returnP :: a -> Parser s a
-returnP a = P $ \ pSt _fl sc -> sc pSt a
+returnP a = P $ \ !pSt _fl sc -> sc pSt a
 {-# INLINE returnP #-}
 
 -- Explicit version of @pa >>= const pb@.
 ignFirstP :: Parser s a -> Parser s b -> Parser s b
-ignFirstP pa pb = P $ \ pSt fl sc ->
-                        runP pa pSt fl $ \ pSt' _a -> runP pb pSt' fl sc
+ignFirstP pa pb = P $ \ !pSt fl sc ->
+                        runP pa pSt fl $ \ !pSt' _a -> runP pb pSt' fl sc
 {-# INLINE ignFirstP #-}
 
 discard :: Parser s a -> Parser s b -> Parser s a
-discard pa pb = P $ \ pSt fl sc ->
+discard pa pb = P $ \ !pSt fl sc ->
                   let sc' a pSt' b = b `seq` sc pSt' a
                       -- Ignore the provided result and use the one
                       -- you obtained earlier.
-                  in runP pa pSt fl $ \ pSt' a ->
+                  in runP pa pSt fl $ \ !pSt' a ->
                                             runP pb pSt' fl (sc' a)
 {-# INLINE discard #-}
 
 apP :: Parser s (a -> b) -> Parser s a -> Parser s b
-apP pf pa = P $ \ pSt fl sc ->
+apP pf pa = P $ \ !pSt fl sc ->
                   runP pf pSt fl
-                       $ \ pSt' f -> runP pa pSt' fl
-                                          $ \ pSt'' a -> sc pSt'' (f a)
+                       $ \ !pSt' f -> runP pa pSt' fl
+                                          $ \ !pSt'' a -> sc pSt'' (f a)
 {-# INLINE apP #-}
 
 instance (ParseInput s) => Alternative (Parser s) where
@@ -370,10 +370,10 @@ instance (ParseInput s) => Alternative (Parser s) where
   {-# INLINE some #-}
 
 onFail :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
-onFail p1 p2 = P $ \ pSt fl sc ->
-               let fl' pSt' _e
+onFail p1 p2 = P $ \ !pSt fl sc ->
+               let fl' !pSt' _e
                        = mergeIncremental pSt pSt' $
-                         \ pSt'' -> runP p2 pSt'' fl sc
+                         \ !pSt'' -> runP p2 pSt'' fl sc
                    -- If we fail, run parser p2 instead.  Don't use
                    -- the provided @AdjErr@ value, get the "global"
                    -- one instead (as we don't want p1's stack
@@ -381,7 +381,7 @@ onFail p1 p2 = P $ \ pSt fl sc ->
                    -- requested and obtained additional input that we
                    -- use it as well.
 
-                   sc' pSt' = sc (prependAdditional pSt pSt')
+                   sc' !pSt' = sc (prependAdditional pSt pSt')
                    -- Put back in the original additional input.
              in runP p1 (ignoreAdditional pSt) fl' sc'
                  -- We want to be able to differentiate the
@@ -403,13 +403,13 @@ instance Monad (Parser s) where
   {-# INLINE fail #-}
 
 failP :: String -> Parser s a
-failP e = P $ \ pSt fl _sc -> fl pSt e
+failP e = P $ \ !pSt fl _sc -> fl pSt e
 {-# INLINE failP #-}
 
 bindP ::  Parser s a -> (a -> Parser s b) -> Parser s b
-bindP p f = P $ \ pSt fl sc -> runP p pSt fl $
+bindP p f = P $ \ !pSt fl sc -> runP p pSt fl $
                  -- Get the new parser and run it.
-                  \ pSt' a -> runP (f a) pSt' fl sc
+                  \ !pSt' a -> runP (f a) pSt' fl sc
 {-# INLINE bindP #-}
 
 instance (ParseInput s) => MonadPlus (Parser s) where
@@ -428,7 +428,7 @@ instance (ParseInput s) => MonadPlus (Parser s) where
 --   That is, @commit p1 \<|\> p2@ is equivalent to just @p1@ (though
 --   also preventing any other usage of @'<|>'@ that might occur).
 commit :: Parser s a -> Parser s a
-commit p = P $ \ pSt _fl sc ->
+commit p = P $ \ !pSt _fl sc ->
                -- We commit by prohibiting external sources from
                -- overriding our failure function (by just ignoring
                -- provided Failure values).
@@ -442,7 +442,7 @@ commit p = P $ \ pSt _fl sc ->
 -- as having the same 'received' input as @inc1@, but may have since
 -- received additional input.
 mergeIncremental :: (Monoid s) => ParseState s -> ParseState s -> (ParseState s -> r) -> r
-mergeIncremental pSt1 pSt2 f =
+mergeIncremental !pSt1 !pSt2 f =
   let !i = input pSt1 <> additional pSt2 -- Add any additional data we might have received.
       a = additional pSt1 <> additional pSt2
       !m = more pSt1  <> more pSt2
@@ -453,25 +453,25 @@ mergeIncremental pSt1 pSt2 f =
 -- then possibly had input consumed and additional input obtained.  As
 -- such, add the original additional value back in.
 prependAdditional :: (Monoid s) => ParseState s -> ParseState s -> ParseState s
-prependAdditional pSt1 pSt2 = pSt2 { additional = additional pSt1 <> additional pSt2 }
+prependAdditional !pSt1 !pSt2 = pSt2 { additional = additional pSt1 <> additional pSt2 }
 {-# INLINE prependAdditional #-}
 
 ignoreAdditional :: (Monoid s) => ParseState s -> ParseState s
-ignoreAdditional pSt = pSt { additional = mempty }
+ignoreAdditional !pSt = pSt { additional = mempty }
 {-# INLINE ignoreAdditional #-}
 
 -- | Make sure that there are at least @n@ 'Token's available.
 needAtLeast :: (ParseInput s) => Int -> Parser s ()
 needAtLeast !n = go
   where
-    go = P $ \ pSt fl sc ->
+    go = P $ \ !pSt fl sc ->
       if lengthAtLeast (input pSt) n
          then sc pSt ()
          else runP (needMoreInput *> go) pSt fl sc
 {-# INLINE needAtLeast #-}
 
 ensure :: (ParseInput s) => Int -> Parser s s
-ensure !n = P $ \ pSt fl sc ->
+ensure !n = P $ \ !pSt fl sc ->
       if lengthAtLeast (input pSt) n
          then sc pSt (input pSt)
          else ensure' n pSt fl sc
@@ -480,24 +480,24 @@ ensure !n = P $ \ pSt fl sc ->
 -- The un-common case is split off to avoid recursion in ensure, so
 -- that it can be inlined properly.
 ensure' :: (ParseInput s) => Int -> ParseState s -> Failure s   r -> Success s s r -> Result  s   r
-ensure' !n pSt fl sc = runP (needMoreInput *> go n) pSt fl sc
+ensure' !n !pSt fl sc = runP (needMoreInput *> go n) pSt fl sc
   where
-    go !n' = P $ \ pSt' fl' sc' ->
+    go !n' = P $ \ !pSt' fl' sc' ->
       if lengthAtLeast (input pSt') n'
          then sc' pSt' (input pSt')
          else runP (needMoreInput *> go n') pSt' fl' sc'
 
 get :: Parser s s
-get = P $ \ pSt _fl sc -> sc pSt (input pSt)
+get = P $ \ !pSt _fl sc -> sc pSt (input pSt)
 {-# INLINE get #-}
 
 put :: s -> Parser s ()
-put s = P $ \ pSt _fl sc -> sc (pSt { input = s }) ()
+put s = P $ \ !pSt _fl sc -> sc (pSt { input = s }) ()
 {-# INLINE put #-}
 
 -- | Request more input.
 needMoreInput :: (ParseInput s) => Parser s ()
-needMoreInput = P $ \ pSt fl sc ->
+needMoreInput = P $ \ !pSt fl sc ->
   if more pSt == Complete
      then fl pSt "Not enough input."
      else let fl' pSt' = fl pSt' "Not enough input."
@@ -514,7 +514,7 @@ requestInput :: (ParseInput s) =>
                 -> (ParseState s -> (Result s r)) -- Failure case
                 -> (ParseState s -> (Result s r)) -- Success case
                 -> Result s r
-requestInput pSt fl sc = Partial (AE (parseLog pSt)) $ \ s ->
+requestInput !pSt fl sc = Partial (AE (parseLog pSt)) $ \ s ->
   if isEmpty s
      then fl (pSt { more = Complete })
      else sc (pSt { input = input pSt <> s, additional = additional pSt <> s})

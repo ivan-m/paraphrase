@@ -100,7 +100,7 @@ next = satisfy (const True)
 -- | This parser succeeds if we've reached the end of our input, and
 --   fails otherwise.
 endOfInput :: (ParseInput s) => Parser s ()
-endOfInput = P $ \ pSt fl sc ->
+endOfInput = P $ \ !pSt fl sc ->
                    if isEmpty (input pSt)
                       then sc pSt ()
                       else fl pSt "Expected end of input"
@@ -137,7 +137,7 @@ oneOf = foldr (<|>) (fail "Failed to parse any of the possible choices")
 manySatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s s
 manySatisfy f = go
   where
-    go = P $ \ pSt fl sc ->
+    go = P $ \ !pSt fl sc ->
       let (pre,suf) = breakWhen f (input pSt)
       in if (isEmpty suf && more pSt /= Complete)
             then runP (needMoreInput *> go) pSt fl sc
@@ -164,7 +164,7 @@ someSatisfy f = do r <- manySatisfy f
 --   expand it, and push the expanded version back onto the stream
 --   ready to parse normally.
 reparse :: (ParseInput s) => s -> Parser s ()
-reparse s = P $ \ pSt _fl sc -> sc (pSt { input = s <> input pSt }) ()
+reparse s = P $ \ !pSt _fl sc -> sc (pSt { input = s <> input pSt }) ()
 {-# INLINE reparse #-}
 
 -- -----------------------------------------------------------------------------
@@ -283,9 +283,9 @@ upto n p = foldr go (pure []) $ replicate n p
 --   lazily.
 chainParsers :: (ParseInput b) => Parser b c -> Parser a b -> Parser a c
 chainParsers pb pa
-   = P $ \ pStA fl sc ->
+   = P $ \ !pStA fl sc ->
          runP pa pStA  fl $
-           \ pStA' inpB ->
+           \ !pStA' inpB ->
               -- We need to explicitly run the parser and use a case
               -- statement, as the types for the failure and success
               -- cases won't match if we just use runP.
@@ -351,7 +351,7 @@ addStackTraceBad msg = addStackTrace msg . commit
 -- | Apply the transformation function on any error messages that
 --   might arise from the provided parser.
 adjustErr :: Parser s a -> (String -> String) -> Parser s a
-adjustErr p f = P $ \ pSt fl sc ->
+adjustErr p f = P $ \ !pSt fl sc ->
                        runP p (pSt { parseLog = parseLog pSt . f }) fl sc
 {-# INLINE adjustErr #-}
 
@@ -379,14 +379,14 @@ oneOf' = go id
                         ++ indent 2 (concatMap showErr (errs []))
     -- Can't use <|> here as we want access to `e'.  Otherwise this is
     -- pretty much a duplicate of onFail.
-    go errs ((nm,p):ps) = P $ \ pSt fl sc ->
+    go errs ((nm,p):ps) = P $ \ !pSt fl sc ->
       let go' e = go (errs . ((nm,e):)) ps
           -- When we fail (and the parser isn't committed), recurse
           -- and try the next parser whilst saving the error message.
-          fl' pSt' e = mergeIncremental pSt pSt' $
-            \ pSt'' -> runP (go' $ parseLog pSt' e) pSt'' fl sc
+          fl' !pSt' e = mergeIncremental pSt pSt' $
+            \ !pSt'' -> runP (go' $ parseLog pSt' e) pSt'' fl sc
 
-          sc' pSt' = sc (prependAdditional pSt pSt')
+          sc' !pSt' = sc (prependAdditional pSt pSt')
           -- Put back in the original additional input.
       in runP p (ignoreAdditional pSt { parseLog = noAdj }) fl' sc'
            -- Note: we only consider the AdjErr from the provided
