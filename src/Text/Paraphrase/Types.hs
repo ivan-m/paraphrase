@@ -327,9 +327,20 @@ function due to how 'commit' works.
 -- than separating them to help make more manageable and readable.
 --
 -- CONVENTION: a value of this type is called something like @pSt@.
-data ParseState s = PS { input      :: !(Input s)
-                       , additional :: !(Additional s)
+data ParseState s = PS { input      :: !s
+                         -- ^ The input that we're currently parsing.
+                       , additional :: !s
+                         -- ^ Any additional input that has been
+                         --   provided.  Note that we do not
+                         --   explicitly parse through this value; it
+                         --   is used in functions like
+                         --   'mergeIncremental' where we are
+                         --   considering what to do when one parser
+                         --   may have requested (and received) more
+                         --   input and thus need to add in the extra
+                         --   provided input.
                        , more       :: !More
+                       -- ^ Is there any more input available?
                        , parseLog   :: !AdjErr
                        }
 
@@ -352,31 +363,15 @@ blankState = PS { input      = mempty
                 }
 
 completeState :: (Monoid s) => s -> ParseState s
-completeState inp = blankState { input = I inp
+completeState inp = blankState { input = inp
                                , more  = Complete
                                }
 
 incompleteState :: (Monoid s) => s -> ParseState s
-incompleteState inp = blankState { input = I inp
+incompleteState inp = blankState { input = inp
                                  -- Not to rely upon current coding default
                                  , more  = Incomplete
                                  }
-
--- The input that we're currently parsing.
---
--- CONVENTION: a value of this type is called something like @inp@.
-newtype Input s = I { unI :: s }
-                  deriving (Eq, Ord, Show, Read, Monoid)
-
--- Any additional input that has been provided.  Note that we do not
--- explicitly parse through this value; it is used in functions like
--- 'mergeIncremental' where we are considering what to do when one
--- parser may have requested (and received) more input and thus need
--- to add in the extra provided input.
---
--- CONVENTION: a value of this type is called something like @add@.
-newtype Additional s = A { unA :: s }
-                       deriving (Eq, Ord, Show, Read, Monoid)
 
 -- Have we read all available input?
 --
@@ -421,14 +416,14 @@ noAdj = id
 -- Dum... Dum... Dum... DUMMMMMM!!!  The parsing has gone all wrong,
 -- so apply the error-message adjustment and stop doing anything.
 failure :: Failure s r
-failure pSt e = Failure (unI $ input pSt) addE' e
+failure pSt e = Failure (input pSt) addE' e
   where
     addE' = AE $ parseLog pSt . indMsg
     indMsg = allButFirstLine (indent lenStackTracePoint)
 
 -- Hooray!  We're all done here, and a job well done!
 successful :: Success s a a
-successful pSt = Success (unI $ input pSt)
+successful pSt = Success (input pSt)
 
 -- | Run the parser on the provided input, providing the raw 'Result'
 --   value.
@@ -576,7 +571,7 @@ instance (ParseInput s) => MonadPlus (Parser s) where
 -- received additional input.
 mergeIncremental :: (Monoid s) => ParseState s -> ParseState s -> (ParseState s -> r) -> r
 mergeIncremental pSt1 pSt2 f =
-  let !i = input pSt1 <> I (unA $ additional pSt2)
+  let !i = input pSt1 <> additional pSt2 -- Add any additional data we might have received.
       !a = additional pSt1 <> additional pSt2
       !m = more pSt1  <> more pSt2
   in f (pSt1 { input = i, additional = a, more = m })
@@ -598,15 +593,15 @@ needAtLeast :: (ParseInput s) => Int -> Parser s ()
 needAtLeast !n = go
   where
     go = P $ \ pSt fl sc ->
-      if lengthAtLeast (unI $ input pSt) n
+      if lengthAtLeast (input pSt) n
          then sc pSt ()
          else runP (needMoreInput *> go) pSt fl sc
 {-# INLINE needAtLeast #-}
 
 ensure :: (ParseInput s) => Int -> Parser s s
 ensure !n = P $ \ pSt fl sc ->
-      if lengthAtLeast (unI $ input pSt) n
-         then sc pSt (unI $ input pSt)
+      if lengthAtLeast (input pSt) n
+         then sc pSt (input pSt)
          else ensure' n pSt fl sc
 {-# INLINE ensure #-}
 
@@ -616,16 +611,17 @@ ensure' :: (ParseInput s) => Int -> ParseState s -> Failure s   r -> Success s s
 ensure' !n pSt fl sc = runP (needMoreInput *> go n) pSt fl sc
   where
     go !n' = P $ \ pSt' fl' sc' ->
-      if lengthAtLeast (unI $ input pSt') n'
-         then sc' pSt' (unI $ input pSt')
+      if lengthAtLeast (input pSt') n'
+         then sc' pSt' (input pSt')
          else runP (needMoreInput *> go n') pSt' fl' sc'
 
 get :: Parser s s
-get = P $ \ pSt _fl sc -> sc pSt (unI $ input pSt)
+get = P $ \ pSt _fl sc -> sc pSt (input pSt)
 {-# INLINE get #-}
 
 put :: s -> Parser s ()
-put s = P $ \ pSt _fl sc -> sc (pSt { input = I s }) ()
+put s = P $ \ pSt _fl sc -> sc (pSt { input = s }) ()
+{-# INLINE put #-}
 
 -- | Request more input.
 needMoreInput :: (ParseInput s) => Parser s ()
@@ -649,4 +645,4 @@ requestInput :: (ParseInput s) =>
 requestInput pSt fl sc = Partial (AE (parseLog pSt)) $ \ s ->
   if isEmpty s
      then fl (pSt { more = Complete })
-     else sc (pSt { input = input pSt <> I s, additional = additional pSt <> A s})
+     else sc (pSt { input = input pSt <> s, additional = additional pSt <> s})

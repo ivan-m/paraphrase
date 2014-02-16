@@ -89,10 +89,10 @@ import Data.Monoid
 --   also preventing any other usage of @'<|>'@ that might occur).
 commit :: Parser s a -> Parser s a
 commit p = P $ \ pSt _fl sc ->
-                 -- We commit by prohibiting external sources from
-                 -- overriding our failure function (by just ignoring
-                 -- provided Failure values).
-                 runP p pSt failure sc
+                -- We commit by prohibiting external sources from
+                -- overriding our failure function (by just ignoring
+                -- provided Failure values).
+                runP p pSt failure sc
 {-# INLINE commit #-}
 
 -- | A combination of 'fail' and 'commit': specify a failure that
@@ -113,7 +113,7 @@ next = satisfy (const True)
 --   fails otherwise.
 endOfInput :: (ParseInput s) => Parser s ()
 endOfInput = P $ \ pSt fl sc ->
-                   if isEmpty (unI $ input pSt)
+                   if isEmpty (input pSt)
                       then sc pSt ()
                       else fl pSt "Expected end of input"
 {-# INLINE endOfInput #-}
@@ -150,10 +150,10 @@ manySatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s s
 manySatisfy f = go
   where
     go = P $ \ pSt fl sc ->
-      let (pre,suf) = breakWhen f (unI $ input pSt)
+      let (pre,suf) = breakWhen f (input pSt)
       in if (isEmpty suf && more pSt /= Complete)
             then runP (needMoreInput *> go) pSt fl sc
-            else sc (pSt { input = I suf }) pre
+            else sc (pSt { input = suf }) pre
 {-# INLINE manySatisfy #-}
 
 -- TODO: consider splitting and merging rather than continually
@@ -176,7 +176,7 @@ someSatisfy f = do r <- manySatisfy f
 --   expand it, and push the expanded version back onto the stream
 --   ready to parse normally.
 reparse :: (ParseInput s) => s -> Parser s ()
-reparse s = P $ \ pSt _fl sc -> sc (pSt { input = I s <> input pSt }) ()
+reparse s = P $ \ pSt _fl sc -> sc (pSt { input = s <> input pSt }) ()
 {-# INLINE reparse #-}
 
 -- -----------------------------------------------------------------------------
