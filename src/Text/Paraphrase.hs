@@ -72,6 +72,7 @@ module Text.Paraphrase
        , module Control.Applicative
        ) where
 
+import Text.Paraphrase.Additional
 import Text.Paraphrase.Inputs
 import Text.Paraphrase.TextManipulation
 import Text.Paraphrase.Types

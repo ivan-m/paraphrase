@@ -15,7 +15,8 @@ cabal-version:       >=1.10
 library
   exposed-modules:       Text.Paraphrase
 
-  other-modules:         Text.Paraphrase.Inputs
+  other-modules:         Text.Paraphrase.Additional
+                       , Text.Paraphrase.Inputs
                        , Text.Paraphrase.Types
                        , Text.Paraphrase.TextManipulation
   -- other-extensions:

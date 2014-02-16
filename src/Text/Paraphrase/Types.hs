@@ -436,6 +436,17 @@ commit p = P $ \ !pSt _fl sc ->
 {-# INLINE commit #-}
 
 -- -----------------------------------------------------------------------------
+-- Some basic parsers
+
+get :: Parser s s
+get = P $ \ !pSt _fl sc -> sc pSt (input pSt)
+{-# INLINE get #-}
+
+put :: s -> Parser s ()
+put s = P $ \ !pSt _fl sc -> sc (pSt { input = s }) ()
+{-# INLINE put #-}
+
+-- -----------------------------------------------------------------------------
 -- Incremental support
 
 -- @mergeIncremental inc1 inc2@ is used when @inc2@ originally started
@@ -459,62 +470,3 @@ prependAdditional !pSt1 !pSt2 = pSt2 { additional = additional pSt1 <> additiona
 ignoreAdditional :: (Monoid s) => ParseState s -> ParseState s
 ignoreAdditional !pSt = pSt { additional = mempty }
 {-# INLINE ignoreAdditional #-}
-
--- | Make sure that there are at least @n@ 'Token's available.
-needAtLeast :: (ParseInput s) => Int -> Parser s ()
-needAtLeast !n = go
-  where
-    go = P $ \ !pSt fl sc ->
-      if lengthAtLeast (input pSt) n
-         then sc pSt ()
-         else runP (needMoreInput *> go) pSt fl sc
-{-# INLINE needAtLeast #-}
-
-ensure :: (ParseInput s) => Int -> Parser s s
-ensure !n = P $ \ !pSt fl sc ->
-      if lengthAtLeast (input pSt) n
-         then sc pSt (input pSt)
-         else ensure' n pSt fl sc
-{-# INLINE ensure #-}
-
--- The un-common case is split off to avoid recursion in ensure, so
--- that it can be inlined properly.
-ensure' :: (ParseInput s) => Int -> ParseState s -> Failure s   r -> Success s s r -> Result  s   r
-ensure' !n !pSt fl sc = runP (needMoreInput *> go n) pSt fl sc
-  where
-    go !n' = P $ \ !pSt' fl' sc' ->
-      if lengthAtLeast (input pSt') n'
-         then sc' pSt' (input pSt')
-         else runP (needMoreInput *> go n') pSt' fl' sc'
-
-get :: Parser s s
-get = P $ \ !pSt _fl sc -> sc pSt (input pSt)
-{-# INLINE get #-}
-
-put :: s -> Parser s ()
-put s = P $ \ !pSt _fl sc -> sc (pSt { input = s }) ()
-{-# INLINE put #-}
-
--- | Request more input.
-needMoreInput :: (ParseInput s) => Parser s ()
-needMoreInput = P $ \ !pSt fl sc ->
-  if more pSt == Complete
-     then fl pSt "Not enough input."
-     else let fl' pSt' = fl pSt' "Not enough input."
-              sc' pSt' = sc pSt' ()
-          in requestInput pSt fl' sc'
-
--- | Construct a 'Partial' 'Result' with a continuation function that
---   will use the first provided function if it fails, and the second
---   if it succeeds.
---
---   It is assumed that @more pSt == Incomplete@.
-requestInput :: (ParseInput s) =>
-                ParseState s
-                -> (ParseState s -> (Result s r)) -- Failure case
-                -> (ParseState s -> (Result s r)) -- Success case
-                -> Result s r
-requestInput !pSt fl sc = Partial (AE (parseLog pSt)) $ \ s ->
-  if isEmpty s
-     then fl (pSt { more = Complete })
-     else sc (pSt { input = input pSt <> s, additional = additional pSt <> s})
