@@ -212,7 +212,7 @@ instance (Show s) => Show (ParseState s) where
 blankState :: (Monoid s) => ParseState s
 blankState = PS { input      = mempty
                 , additional = mempty
-                , more       = Incomplete
+                , more       = mempty
                 , parseLog   = noAdj
                 }
 
