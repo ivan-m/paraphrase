@@ -259,6 +259,7 @@ runParser' p inp = case fst $ runParser p inp of
 -- | The possible errors that could arise when parsing.
 data ParseError s
  = UnexpectedEndOfInput
+ | NoMoreInputExpected -- ^ When more input requested after being told there isn't any more.
  | ExpectedEndOfInput s
  | ExpectedButFound (Token s) (Token s) -- ^ The token that was expected/required.
  | UnexpectedToken (Token s)            -- ^ Token found that did not match what was required/expected.

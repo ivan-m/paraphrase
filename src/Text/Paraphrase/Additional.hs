@@ -50,7 +50,7 @@ ensure' !n !pSt fl sc = runP (needMoreInput *> go n) pSt fl sc
 needMoreInput :: (ParseInput s) => Parser s ()
 needMoreInput = P $ \ !pSt fl sc ->
  if more pSt == Complete
-    then fl pSt UnexpectedEndOfInput
+    then fl pSt NoMoreInputExpected
     else let fl' pSt' = fl pSt' UnexpectedEndOfInput
              sc' pSt' = sc pSt' ()
          in requestInput pSt fl' sc'
