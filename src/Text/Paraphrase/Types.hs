@@ -72,9 +72,9 @@ instance (ParseInput s, Show s, Show (Token s), Show a) => Show (Result s a) whe
                       Failure s pl  -> showString "Failure "
                                        . shows s
                                        . showString " "
-                                       . shows pl
+                                       . showsPrec 11 pl
                       Partial pl _p -> showString "Partial "
-                                       . shows pl
+                                       . showsPrec 11 pl
                                        . showString " "
                                        . showString "\"<continuation>\""
 
