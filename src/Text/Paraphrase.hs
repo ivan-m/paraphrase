@@ -55,8 +55,10 @@ module Text.Paraphrase
 
          -- * Error reporting
        , ParseError (..)
-       , ParseLog
+       , ParsingErrors
        , failWith
+       , finalError
+       , completeLog
        , prettyLog
          -- ** Convenience functions
          -- $stacktraces
@@ -71,6 +73,7 @@ module Text.Paraphrase
        ) where
 
 import Text.Paraphrase.Additional
+import Text.Paraphrase.Errors
 import Text.Paraphrase.Inputs
 import Text.Paraphrase.Types
 
@@ -373,7 +376,7 @@ oneOf' = go id
           -- When we fail (and the parser isn't committed), recurse
           -- and try the next parser whilst saving the error message.
           fl' !pSt' e = mergeIncremental pSt pSt' $
-            \ !pSt'' -> runP (go' $ parseLog pSt' |> e) pSt'' fl sc
+            \ !pSt'' -> runP (go' . completeLog $ createFinalLog (parseLog pSt') e) pSt'' fl sc
 
           sc' !pSt' = sc (prependAdditional pSt pSt')
           -- Put back in the original additional input.

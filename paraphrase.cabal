@@ -16,6 +16,7 @@ library
   exposed-modules:       Text.Paraphrase
 
   other-modules:         Text.Paraphrase.Additional
+                       , Text.Paraphrase.Errors
                        , Text.Paraphrase.Inputs
                        , Text.Paraphrase.Types
   -- other-extensions:

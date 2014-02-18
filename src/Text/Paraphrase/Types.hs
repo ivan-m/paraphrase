@@ -12,15 +12,13 @@
  -}
 module Text.Paraphrase.Types where
 
+import Text.Paraphrase.Errors
 import Text.Paraphrase.Inputs (ParseInput (..))
 
-import           Control.Applicative
-import           Control.DeepSeq     (NFData (rnf))
-import           Control.Monad       (MonadPlus (..))
-import qualified Data.Foldable       as F
-import           Data.Monoid
-import qualified Data.Sequence       as S
-import           Data.String         (IsString (..))
+import Control.Applicative
+import Control.DeepSeq     (NFData (rnf))
+import Control.Monad       (MonadPlus (..))
+import Data.Monoid
 
 -- -----------------------------------------------------------------------------
 
@@ -52,12 +50,12 @@ See also the provided conventions for referring to values of type
 --   function that will produce any additional error messages (stack
 --   traces, etc.) if so desired.
 data Result s a = Success s a
-                | Failure s (ParseLog s)
-                | Partial   (ParseLog s) (s -> Result s a)
+                | Failure s (ParsingErrors s)
+                | Partial   (ParsingErrors s) (s -> Result s a)
                   -- ^ Indicates that the parser requires more input
                   --   to continue.
                   --
-                  --   The 'ParseLog' is for use with
+                  --   The 'ParseError' is for use with
                   --   'resultToEither' and can be safely ignored in
                   --   your own code.
 
@@ -90,13 +88,13 @@ instance (ParseInput s, NFData s, NFData (Token s), NFData a) => NFData (Result 
 
 -- | A convenience alias for use with 'resultToEither' to avoid having
 --   to type the entire type out.
-type EitherResult s a = Either (ParseLog s) a
+type EitherResult s a = Either (ParsingErrors s) a
 
 -- | Convert the result into an 'Either' value.
 resultToEither :: (ParseInput s) => Result s a -> (EitherResult s a, s)
 resultToEither (Success s a)     = (Right a, s)
 resultToEither (Failure s pl)    = (Left pl, s)
-resultToEither (Partial pl _cnt) = (Left (pl |> "More input required"), mempty)
+resultToEither (Partial pl _cnt) = (Left pl, mempty)
 
 -- -----------------------------------------------------------------------------
 -- Parser definition
@@ -230,7 +228,7 @@ type Success s a r = ParseState s -> a -> Result s r
 -- Dum... Dum... Dum... DUMMMMMM!!!  The parsing has gone all wrong,
 -- so apply the error-message adjustment and stop doing anything.
 failure :: Failure s r
-failure !pSt e = Failure (input pSt) (parseLog pSt |> e)
+failure !pSt e = Failure (input pSt) (createFinalLog (parseLog pSt) e)
 
 -- Hooray!  We're all done here, and a job well done!
 successful :: Success s a a
@@ -256,47 +254,6 @@ runParser' p inp = case fst $ runParser p inp of
 -- -----------------------------------------------------------------------------
 -- Error Handling
 
--- | The possible errors that could arise when parsing.
-data ParseError s
- = UnexpectedEndOfInput
- | NoMoreInputExpected -- ^ When more input requested after being told there isn't any more.
- | ExpectedEndOfInput s
- | ExpectedButFound (Token s) (Token s) -- ^ The token that was expected/required.
- | UnexpectedToken (Token s)            -- ^ Token found that did not match what was required/expected.
- | MissingItemCount Int s               -- ^ Expected this many more items that were not found.
- | Message String                       -- ^ Can be created via the @OverloadedStrings@ pragma.
- | Committed
- | NamedSubLogs [(String, ParseLog s)]
- | SubLog (ParseLog s)
-
--- Need to make these instances separate for GHC to be happy; hence
--- also the various language pragmas above.
-deriving instance (ParseInput s, Eq   s, Eq   (Token s)) => Eq   (ParseError s)
-deriving instance (ParseInput s, Ord  s, Ord  (Token s)) => Ord  (ParseError s)
-deriving instance (ParseInput s, Show s, Show (Token s)) => Show (ParseError s)
-deriving instance (ParseInput s, Read s, Read (Token s)) => Read (ParseError s)
-
-instance (ParseInput s, NFData s, NFData (Token s)) => NFData (ParseError s) where
-  rnf (ExpectedEndOfInput s) = rnf s
-  rnf (ExpectedButFound e f) = rnf e `seq` rnf f
-  rnf (UnexpectedToken t)    = rnf t
-  rnf (MissingItemCount n s) = rnf n `seq` rnf s
-  rnf (Message msg)          = rnf msg
-  rnf (NamedSubLogs spls)    = rnf spls
-  rnf (SubLog pl)            = rnf pl
-  rnf _                      = ()
-
-instance IsString (ParseError s) where
-  fromString = Message
-
-type ParseLog s = S.Seq (ParseError s)
-
--- | Add a @ParseError@ to the end of the log.
-(|>) :: ParseLog s -> ParseError s -> ParseLog s
-(|>) = (S.|>)
-
-infixl 5 |>
-
 -- | Fail with a specific error.  When @OverloadedStrings@ is enabled,
 --   this becomes equivalent to 'fail' (at least for literal 'String's).
 failWith :: ParseError s -> Parser s a
@@ -306,10 +263,6 @@ failWith e = P $ \ !pSt fl _sc -> fl pSt e
 addToLog :: ParseState s -> ParseError s -> ParseState s
 addToLog pSt pe = pSt { parseLog = parseLog pSt |> pe }
 {-# INLINE addToLog #-}
-
--- | Create a pretty-printed version of the log.
-prettyLog :: (ParseInput s, Show s, Show (Token s)) => ParseLog s -> String
-prettyLog = unlines . map show . F.toList
 
 -- -----------------------------------------------------------------------------
 -- Instances

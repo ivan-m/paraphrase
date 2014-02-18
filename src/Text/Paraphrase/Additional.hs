@@ -11,6 +11,7 @@
  -}
 module Text.Paraphrase.Additional where
 
+import Text.Paraphrase.Errors (ParseError (..), createFinalLog)
 import Text.Paraphrase.Inputs
 import Text.Paraphrase.Types
 
@@ -65,7 +66,9 @@ requestInput :: (ParseInput s) =>
                -> (ParseState s -> (Result s r)) -- Failure case
                -> (ParseState s -> (Result s r)) -- Success case
                -> Result s r
-requestInput !pSt fl sc = Partial (parseLog pSt) $ \ s ->
+requestInput !pSt fl sc = Partial partialLog $ \ s ->
   if isEmpty s
      then fl (pSt { more = Complete })
      else sc (pSt { input = input pSt <> s, additional = additional pSt <> s})
+  where
+    partialLog = createFinalLog (parseLog pSt) AwaitingInput
