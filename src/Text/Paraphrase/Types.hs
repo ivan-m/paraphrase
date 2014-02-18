@@ -180,9 +180,7 @@ data ParseState s = PS { input      :: !s
                        }
 
 deriving instance (ParseInput s, Eq     s, Eq     (Token s)) => Eq     (ParseState s)
-deriving instance (ParseInput s, Ord    s, Ord    (Token s)) => Ord    (ParseState s)
 deriving instance (ParseInput s, Show   s, Show   (Token s)) => Show   (ParseState s)
-deriving instance (ParseInput s, Read   s, Read   (Token s)) => Read   (ParseState s)
 
 blankState :: (Monoid s) => ParseState s
 blankState = PS { input      = mempty

@@ -24,12 +24,11 @@ module Text.Paraphrase.Errors
 
 import Text.Paraphrase.Inputs (ParseInput (..))
 
-import           Control.Applicative (liftA2)
-import           Control.DeepSeq     (NFData (rnf))
-import qualified Data.Foldable       as F
-import           Data.Monoid
-import qualified Data.Sequence       as S
-import           Data.String         (IsString (..))
+import Control.Applicative (liftA2)
+import Control.DeepSeq     (NFData (rnf))
+import Data.Function       (on)
+import Data.Monoid
+import Data.String         (IsString (..))
 
 -- -----------------------------------------------------------------------------
 
@@ -67,17 +66,19 @@ instance (ParseInput s, NFData s, NFData (Token s)) => NFData (ParseError s) whe
 instance IsString (ParseError s) where
  fromString = Message
 
-newtype ParseLog s = PL { getLog :: S.Seq (ParseError s) }
+
+newtype ParseLog s = PL { getLog :: [ParseError s] -> [ParseError s]  }
                      deriving (Monoid)
 
-deriving instance (ParseInput s, Eq   s, Eq   (Token s)) => Eq   (ParseLog s)
-deriving instance (ParseInput s, Ord  s, Ord  (Token s)) => Ord  (ParseLog s)
-deriving instance (ParseInput s, Show s, Show (Token s)) => Show (ParseLog s)
-deriving instance (ParseInput s, Read s, Read (Token s)) => Read (ParseLog s)
+instance (ParseInput s, Eq s, Eq (Token s)) => Eq (ParseLog s) where
+  (==) = (==) `on` ($[]) . getLog
+
+instance (ParseInput s, Show s, Show (Token s)) => Show (ParseLog s) where
+  showsPrec d = showsPrec d . ($[]) . getLog
 
 -- | Add a @ParseError@ to the end of the log.
 (|>) :: ParseLog s -> ParseError s -> ParseLog s
-(|>) pl e = pl { getLog = getLog pl S.|> e }
+(|>) pl e = pl { getLog = getLog pl . (e:) }
 
 infixl 5 |>
 
@@ -100,7 +101,7 @@ instance (ParseInput s, NFData s, NFData (Token s)) => NFData (ParsingErrors s) 
 
 -- | The complete log of errors from parsing.
 completeLog :: ParsingErrors s -> [ParseError s]
-completeLog = F.toList . getLog . liftA2 (|>) errorLog finalError
+completeLog = liftA2 getLog errorLog ((:[]) . finalError)
 
 -- | Create a pretty-printed version of the log.
 prettyLog :: (ParseInput s, Show s, Show (Token s)) => ParsingErrors s -> String
