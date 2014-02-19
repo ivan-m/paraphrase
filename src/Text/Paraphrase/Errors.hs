@@ -1,5 +1,4 @@
-{-# LANGUAGE FlexibleContexts, GeneralizedNewtypeDeriving, StandaloneDeriving,
-             UndecidableInstances #-}
+{-# LANGUAGE FlexibleContexts, StandaloneDeriving, UndecidableInstances #-}
 {- |
    Module      : Text.Paraphrase.Errors
    Description : Internal module for defining error types
@@ -68,13 +67,17 @@ instance IsString (ParseError s) where
 
 
 newtype ParseLog s = PL { getLog :: [ParseError s] -> [ParseError s]  }
-                     deriving (Monoid)
 
 instance (ParseInput s, Eq s, Eq (Token s)) => Eq (ParseLog s) where
   (==) = (==) `on` ($[]) . getLog
 
 instance (ParseInput s, Show s, Show (Token s)) => Show (ParseLog s) where
   showsPrec d = showsPrec d . ($[]) . getLog
+
+instance Monoid (ParseLog s) where
+  mempty = PL id
+
+  mappend (PL l1) (PL l2) = PL (l1 . l2)
 
 -- | Add a @ParseError@ to the end of the log.
 (|>) :: ParseLog s -> ParseError s -> ParseLog s
