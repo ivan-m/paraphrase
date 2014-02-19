@@ -294,7 +294,9 @@ returnP a = P $ \ !pSt _fl sc -> sc pSt a
 -- Explicit version of @pa >>= const pb@.
 ignFirstP :: Parser s a -> Parser s b -> Parser s b
 ignFirstP pa pb = P $ \ !pSt fl sc ->
-                        runP pa pSt fl $ \ !pSt' _a -> runP pb pSt' fl sc
+                        runP pa pSt fl $ \ !pSt' _a
+                          -- pa succeeded, so don't keep its error logs
+                          -> runP pb (pSt' { parseLog = parseLog pSt }) fl sc
 {-# INLINE ignFirstP #-}
 
 discard :: Parser s a -> Parser s b -> Parser s a
@@ -303,14 +305,16 @@ discard pa pb = P $ \ !pSt fl sc ->
                       -- Ignore the provided result and use the one
                       -- you obtained earlier.
                   in runP pa pSt fl $ \ !pSt' a ->
-                                            runP pb pSt' fl (sc' a)
+                       -- pa succeeded, so don't keep its error logs
+                       runP pb (pSt' { parseLog = parseLog pSt }) fl (sc' a)
 {-# INLINE discard #-}
 
 apP :: Parser s (a -> b) -> Parser s a -> Parser s b
 apP pf pa = P $ \ !pSt fl sc ->
-                  runP pf pSt fl
-                       $ \ !pSt' f -> runP pa pSt' fl
-                                          $ \ !pSt'' a -> sc pSt'' (f a)
+                  runP pf pSt fl $ \ !pSt' f ->
+                    -- pf succeeded, so don't keep its error logs
+                    runP pa (pSt' { parseLog = parseLog pSt }) fl $ \ !pSt'' a ->
+                      sc pSt'' (f a)
 {-# INLINE apP #-}
 
 instance (ParseInput s) => Alternative (Parser s) where
@@ -373,8 +377,9 @@ failP = failWith . Message
 
 bindP ::  Parser s a -> (a -> Parser s b) -> Parser s b
 bindP p f = P $ \ !pSt fl sc -> runP p pSt fl $
-                 -- Get the new parser and run it.
-                  \ !pSt' a -> runP (f a) pSt' fl sc
+                 -- Get the new parser and run it.  Since p succeeded,
+                 -- don't keep its error logs.
+                  \ !pSt' a -> runP (f a) (pSt' { parseLog = parseLog pSt }) fl sc
 {-# INLINE bindP #-}
 
 instance (ParseInput s) => MonadPlus (Parser s) where
