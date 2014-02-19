@@ -266,11 +266,13 @@ manyFinally' p t = addStackTrace "In a list of items with a terminator:" go
 --
 --   The behaviour is identical to that of 'replicateM' but with
 --   better error messages.
-exactly :: Int -> Parser s a -> Parser s [a]
-exactly n p = mapM toP $ enumFromThenTo n (n-1) 1
+exactly :: (ParseInput s) => Int -> Parser s a -> Parser s [a]
+exactly n p = go n
   where
-    toP c = do s <- get
-               (MissingItemCount c s) `addStackTrace` p
+    go !c
+      | c <= 0    = pure []
+      | otherwise = (:) <$> MissingItemCount c mempty `addStackTrace` p <*> go (c-1)
+      -- Need to replace that mempty...
 {-# INLINE exactly #-}
 
 -- | @upto n p@ will return a list of no more than @n@ values.
