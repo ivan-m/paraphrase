@@ -277,14 +277,11 @@ exactly n p = go n
 
 -- | @upto n p@ will return a list of no more than @n@ values.
 upto :: (ParseInput s) => Int -> Parser s a -> Parser s [a]
-upto n p = foldr go (pure []) $ replicate n p
+upto n p = go n
   where
-    -- There's probably a nicer way of writing this, but I can't think
-    -- how... explicit recursion?
-
-    -- Not taking argument as we _know_ it's `p'... We just used
-    -- replicate to get the number right.
-    go _ lst = liftA2 (:) p lst <|> pure []
+    go !c
+      | c <= 0    = pure []
+      | otherwise = ((:) <$> p <*> go (c-1)) <|> pure []
 {-# INLINE upto #-}
 
 -- -----------------------------------------------------------------------------
