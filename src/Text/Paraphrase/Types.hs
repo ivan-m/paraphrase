@@ -1,5 +1,6 @@
-{-# LANGUAGE BangPatterns, FlexibleContexts, OverloadedStrings, RankNTypes,
-             StandaloneDeriving, TypeFamilies, UndecidableInstances #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts, GeneralizedNewtypeDeriving,
+             OverloadedStrings, RankNTypes, StandaloneDeriving, TypeFamilies,
+             UndecidableInstances #-}
 {- |
    Module      : Text.Paraphrase.Types
    Description : Definition of types
@@ -110,10 +111,10 @@ resultToEither (Partial pl _cnt) = (Left pl, mempty)
 newtype Parser s a = P {
   -- Our parser is actually a function of functions!
   runP :: forall r.
-          ParseState s     -- The input.
-          -> Failure s   r -- What to do when we fail.
-          -> Success s a r -- What to do when we succeed.
-          -> Result  s   r
+          WithState s     -- The input.
+            (   Failure s   r -- What to do when we fail.
+             -> Success s a r -- What to do when we succeed.
+             -> Result  s   r)
   }
 
 {-
@@ -158,48 +159,25 @@ function due to how 'commit' works.
 
 -}
 
--- The stateful values for parsing.  One large value is used rather
--- than separating them to help make more manageable and readable.
+-- An alias to make types involving explicit usage of the state
+-- variables in a parser easier to read.
+type WithState s r = Input s -> Additional s -> More -> ParseLog s -> r
+
+-- The input that we're currently parsing.
 --
--- CONVENTION: a value of this type is called something like @pSt@.
-data ParseState s = PS { input      :: !s
-                         -- ^ The input that we're currently parsing.
-                       , additional :: s
-                         -- ^ Any additional input that has been
-                         --   provided.  Note that we do not
-                         --   explicitly parse through this value; it
-                         --   is used in functions like
-                         --   'mergeIncremental' where we are
-                         --   considering what to do when one parser
-                         --   may have requested (and received) more
-                         --   input and thus need to add in the extra
-                         --   provided input.
-                       , more       :: !More
-                       -- ^ Is there any more input available?
-                       , parseLog   :: !(ParseLog s)
-                       }
+-- CONVENTION: a value of this type is called something like @inp@.
+newtype Input s = I { unI :: s }
+                  deriving (Eq, Ord, Show, Read, Monoid)
 
-deriving instance (ParseInput s, Eq     s, Eq     (Token s)) => Eq     (ParseState s)
-deriving instance (ParseInput s, Show   s, Show   (Token s)) => Show   (ParseState s)
-
-blankState :: (Monoid s) => ParseState s
-blankState = PS { input      = mempty
-                , additional = mempty
-                , more       = mempty
-                , parseLog   = mempty
-                }
-
-completeState :: (Monoid s) => s -> ParseState s
-completeState inp = blankState { input = inp
-                               , more  = Complete
-                               }
-
-incompleteState :: (Monoid s) => s -> ParseState s
-incompleteState inp = blankState { input = inp
-                                 -- Not to rely upon current coding default
-                                 , more  = Incomplete
-                                 }
-
+-- Any additional input that has been provided.  Note that we do not
+-- explicitly parse through this value; it is used in functions like
+-- 'mergeIncremental' where we are considering what to do when one
+-- parser may have requested (and received) more input and thus need
+-- to add in the extra provided input.
+--
+-- CONVENTION: a value of this type is called something like @add@.
+newtype Additional s = A { unA :: s }
+                       deriving (Eq, Ord, Show, Read, Monoid)
 -- Have we read all available input?
 --
 -- CONVENTION: a value of this type is called something like @mr@.
@@ -215,32 +193,36 @@ instance Monoid More where
 -- What to do when we fail a parse; @s@ is the input type.
 --
 -- CONVENTION: a value of this type is called something like @fl@.
-type Failure s   r = ParseState s -> ParseError s -> Result s r
+type Failure s   r = WithState s (ParseError s -> Result s r)
 
 -- What to do when a parse is successful; @s@ is the input type, @a@
 -- is the result of the parse, @r@ is the output type.
 --
 -- CONVENTION: a value of this type is called something like @sc@.
-type Success s a r = ParseState s -> a -> Result s r
+type Success s a r = WithState s (a -> Result s r)
 
 -- Dum... Dum... Dum... DUMMMMMM!!!  The parsing has gone all wrong,
 -- so apply the error-message adjustment and stop doing anything.
 failure :: Failure s r
-failure !pSt e = Failure (input pSt) (createFinalLog (parseLog pSt) e)
+failure inp _add _mr pl e = Failure (unI inp) (createFinalLog pl e)
+{-# INLINE failure #-}
 
 -- Hooray!  We're all done here, and a job well done!
 successful :: Success s a a
-successful !pSt = Success (input pSt)
+successful inp _add _mr _pl = Success (unI inp)
+{-# INLINE successful #-}
 
 -- | Run the parser on the provided input, providing the raw 'Result'
 --   value.
 parseInput :: (ParseInput s) => Parser s a -> s -> Result s a
-parseInput p inp = runP p (incompleteState inp) failure successful
+parseInput p inp = runP p (I inp) mempty Incomplete mempty failure successful
+{-# INLINE parseInput #-}
 
 -- | Run a parser.
 runParser :: (ParseInput s) => Parser s a -> s
              -> (EitherResult s a, s)
-runParser p inp = resultToEither (runP p (completeState inp) failure successful)
+runParser p inp = resultToEither (runP p (I inp) mempty Complete mempty failure successful)
+{-# INLINE runParser #-}
 
 -- | Run a parser, assuming it succeeds.  If the parser fails, use
 --   'error' to display the message.
@@ -255,12 +237,8 @@ runParser' p inp = case fst $ runParser p inp of
 -- | Fail with a specific error.  When @OverloadedStrings@ is enabled,
 --   this becomes equivalent to 'fail' (at least for literal 'String's).
 failWith :: ParseError s -> Parser s a
-failWith e = P $ \ !pSt fl _sc -> fl pSt e
+failWith e = P $ \ inp add mr pl fl _sc -> fl inp add mr pl e
 {-# INLINE failWith #-}
-
-addToLog :: ParseState s -> ParseError s -> ParseState s
-addToLog pSt pe = pSt { parseLog = parseLog pSt |> pe }
-{-# INLINE addToLog #-}
 
 -- -----------------------------------------------------------------------------
 -- Instances
@@ -270,8 +248,8 @@ instance Functor (Parser s) where
   {-# INLINE fmap #-}
 
 fmapP :: (a -> b) -> Parser s a -> Parser s b
-fmapP f pa = P $ \ !pSt fl sc ->
-                 runP pa pSt fl $ \ !pSt' a -> sc pSt' (f a)
+fmapP f pa = P $ \ inp add mr pl fl sc ->
+                 runP pa inp add mr pl fl $ \ inp' add' mr' pl' a -> sc inp' add' mr' pl' (f a)
 {-# INLINE fmapP #-}
 
 instance Applicative (Parser s) where
@@ -288,33 +266,33 @@ instance Applicative (Parser s) where
   {-# INLINE (<*) #-}
 
 returnP :: a -> Parser s a
-returnP a = P $ \ !pSt _fl sc -> sc pSt a
+returnP a = P $ \ inp add mr pl _fl sc -> sc inp add mr pl a
 {-# INLINE returnP #-}
 
 -- Explicit version of @pa >>= const pb@.
 ignFirstP :: Parser s a -> Parser s b -> Parser s b
-ignFirstP pa pb = P $ \ !pSt fl sc ->
-                        runP pa pSt fl $ \ !pSt' _a
+ignFirstP pa pb = P $ \ inp add mr pl fl sc ->
+                        runP pa inp add mr pl fl $ \ inp' add' mr' _pl' _a
                           -- pa succeeded, so don't keep its error logs
-                          -> runP pb (pSt' { parseLog = parseLog pSt }) fl sc
+                          -> runP pb inp' add' mr' pl fl sc
 {-# INLINE ignFirstP #-}
 
 discard :: Parser s a -> Parser s b -> Parser s a
-discard pa pb = P $ \ !pSt fl sc ->
-                  let sc' a pSt' b = b `seq` sc pSt' a
+discard pa pb = P $ \ inp add mr pl fl sc ->
+                  let sc' a inp' add' mr' pl' b = b `seq` sc inp' add' mr' pl' a
                       -- Ignore the provided result and use the one
                       -- you obtained earlier.
-                  in runP pa pSt fl $ \ !pSt' a ->
+                  in runP pa inp add mr pl fl $ \ inp' add' mr' _pl' a ->
                        -- pa succeeded, so don't keep its error logs
-                       runP pb (pSt' { parseLog = parseLog pSt }) fl (sc' a)
+                       runP pb inp' add' mr' pl fl (sc' a)
 {-# INLINE discard #-}
 
 apP :: Parser s (a -> b) -> Parser s a -> Parser s b
-apP pf pa = P $ \ !pSt fl sc ->
-                  runP pf pSt fl $ \ !pSt' f ->
+apP pf pa = P $ \ inp add mr pl fl sc ->
+                  runP pf inp add mr pl fl $ \ inp' add' mr' _pl' f ->
                     -- pf succeeded, so don't keep its error logs
-                    runP pa (pSt' { parseLog = parseLog pSt }) fl $ \ !pSt'' a ->
-                      sc pSt'' (f a)
+                    runP pa inp' add' mr' pl  fl $ \ inp'' add'' mr'' pl'' a ->
+                      sc inp'' add'' mr'' pl'' (f a)
 {-# INLINE apP #-}
 
 instance (ParseInput s) => Alternative (Parser s) where
@@ -339,10 +317,11 @@ instance (ParseInput s) => Alternative (Parser s) where
   {-# INLINE some #-}
 
 onFail :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
-onFail p1 p2 = P $ \ !pSt fl sc ->
-               let fl' !pSt' _e
-                       = mergeIncremental pSt pSt' $
-                         \ !pSt'' -> runP p2 pSt'' fl sc
+onFail p1 p2 = P $ \ inp add mr pl fl sc ->
+               let fl' inp' add' mr' pl' _e
+                       = mergeIncremental inp add mr pl inp' add' mr' pl' $
+                         \ inp'' add'' mr'' pl''
+                            -> runP p2 inp'' add'' mr'' pl'' fl sc
                    -- If we fail, run parser p2 instead.  Don't use
                    -- the provided @AdjErr@ value, get the "global"
                    -- one instead (as we don't want p1's stack
@@ -350,9 +329,10 @@ onFail p1 p2 = P $ \ !pSt fl sc ->
                    -- requested and obtained additional input that we
                    -- use it as well.
 
-                   sc' !pSt' = sc (prependAdditional pSt pSt')
+                   sc' inp' add' mr' pl' = sc inp' (add <> add') mr' pl'
                    -- Put back in the original additional input.
-             in runP p1 (ignoreAdditional pSt) fl' sc'
+             in ignoreAdditional inp add mr pl $ \ inp' add' mr' pl'
+                  -> runP p1 inp' add' mr' pl' fl' sc'
                  -- We want to be able to differentiate the
                  -- 'Additional' value that we already have vs any we
                  -- may get from running @p1@.
@@ -376,10 +356,10 @@ failP = failWith . Message
 {-# INLINE failP #-}
 
 bindP ::  Parser s a -> (a -> Parser s b) -> Parser s b
-bindP p f = P $ \ !pSt fl sc -> runP p pSt fl $
+bindP p f = P $ \ inp add mr pl fl sc -> runP p inp add mr pl fl $
                  -- Get the new parser and run it.  Since p succeeded,
                  -- don't keep its error logs.
-                  \ !pSt' a -> runP (f a) (pSt' { parseLog = parseLog pSt }) fl sc
+                  \ inp' add' mr' _pl' a -> runP (f a) inp' add' mr' pl fl sc
 {-# INLINE bindP #-}
 
 instance (ParseInput s) => MonadPlus (Parser s) where
@@ -396,22 +376,22 @@ instance (ParseInput s) => MonadPlus (Parser s) where
 -- some, and we want to cut down on noise).  See 'commit' from
 -- Text.Paraphrase instead.
 commitNoLog :: Parser s a -> Parser s a
-commitNoLog p = P $ \ !pSt _fl sc ->
+commitNoLog p = P $ \ inp add mr pl _fl sc ->
                     -- We commit by prohibiting external sources from
                     -- overriding our failure function (by just ignoring
                     -- provided Failure values).
-                    runP p pSt failure sc
+                    runP p inp add mr pl failure sc
 {-# INLINE commitNoLog #-}
 
 -- -----------------------------------------------------------------------------
 -- Some basic parsers
 
 get :: Parser s s
-get = P $ \ !pSt _fl sc -> sc pSt (input pSt)
+get = P $ \ inp add mr pl _fl sc -> sc inp add mr pl (unI inp)
 {-# INLINE get #-}
 
 put :: s -> Parser s ()
-put s = P $ \ !pSt _fl sc -> sc (pSt { input = s }) ()
+put s = P $ \ _inp add mr pl _fl sc -> sc (I s) add mr pl ()
 {-# INLINE put #-}
 
 -- -----------------------------------------------------------------------------
@@ -420,22 +400,18 @@ put s = P $ \ !pSt _fl sc -> sc (pSt { input = s }) ()
 -- @mergeIncremental inc1 inc2@ is used when @inc2@ originally started
 -- as having the same 'received' input as @inc1@, but may have since
 -- received additional input.
-mergeIncremental :: (Monoid s) => ParseState s -> ParseState s -> (ParseState s -> r) -> r
-mergeIncremental !pSt1 !pSt2 f =
-  let !i = input pSt1 <> additional pSt2 -- Add any additional data we might have received.
-      a = additional pSt1 <> additional pSt2
-      !m = more pSt1  <> more pSt2
-  in f (pSt1 { input = i, additional = a, more = m })
-        -- Use pSt1 here so we get its parseLog value.
+mergeIncremental :: (Monoid s) => WithState s (WithState s ((WithState s r) -> r))
+mergeIncremental inp1 add1 mr1 pl1 _inp2 add2 mr2 _pl2 f =
+  let !inp = inp1 <> I (unA add2) -- Add any additional data we might have received.
+      add = add1 <> add2
+      !mr = mr1  <> mr2
+      pl = pl1 -- We only want the original log, not what may have
+               -- happened since they split.
+  in f inp add mr pl
 {-# INLINE mergeIncremental #-}
 
--- Used when - to start with - @pSt2 = ignoreAdditional inp1@, but
--- then possibly had input consumed and additional input obtained.  As
--- such, add the original additional value back in.
-prependAdditional :: (Monoid s) => ParseState s -> ParseState s -> ParseState s
-prependAdditional !pSt1 !pSt2 = pSt2 { additional = additional pSt1 <> additional pSt2 }
-{-# INLINE prependAdditional #-}
-
-ignoreAdditional :: (Monoid s) => ParseState s -> ParseState s
-ignoreAdditional !pSt = pSt { additional = mempty }
+-- A wrapper to set the additional input to be empty as we want to
+-- know solely what input _this_ parser obtains.
+ignoreAdditional :: (Monoid s) => WithState s ((WithState s r) -> r)
+ignoreAdditional inp _add mr pl f = f inp mempty mr pl
 {-# INLINE ignoreAdditional #-}

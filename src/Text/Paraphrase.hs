@@ -114,10 +114,10 @@ next = do
 -- | This parser succeeds if we've reached the end of our input, and
 --   fails otherwise.
 endOfInput :: (ParseInput s) => Parser s ()
-endOfInput = P $ \ !pSt fl sc ->
-                   if isEmpty (input pSt)
-                      then sc pSt ()
-                      else fl pSt (ExpectedEndOfInput (input pSt))
+endOfInput = P $ \ inp add mr pl fl sc ->
+                   if isEmpty (unI inp)
+                      then sc inp add mr pl ()
+                      else fl inp add mr pl (ExpectedEndOfInput (unI inp))
 {-# INLINE endOfInput #-}
 
 -- | Return the next token from our input if it satisfies the given
@@ -155,11 +155,11 @@ oneOf = foldr (<|>) (fail "Failed to parse any of the possible choices")
 manySatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s s
 manySatisfy f = go
   where
-    go = P $ \ !pSt fl sc ->
-      let (pre,suf) = breakWhen f (input pSt)
-      in if (isEmpty suf && more pSt /= Complete)
-            then runP (needMoreInput *> go) pSt fl sc
-            else sc (pSt { input = suf }) pre
+    go = P $ \ inp add mr pl fl sc ->
+      let (pre,suf) = breakWhen f (unI inp)
+      in if (isEmpty suf && mr /= Complete)
+            then runP (needMoreInput *> go) inp add mr pl fl sc
+            else sc (I suf) add mr pl pre
 {-# INLINE manySatisfy #-}
 
 -- TODO: consider splitting and merging rather than continually
@@ -182,7 +182,7 @@ someSatisfy f = do r <- manySatisfy f
 --   expand it, and push the expanded version back onto the stream
 --   ready to parse normally.
 reparse :: (ParseInput s) => s -> Parser s ()
-reparse s = P $ \ !pSt _fl sc -> sc (pSt { input = s <> input pSt }) ()
+reparse s = P $ \ inp add mr pl _fl sc -> sc (I s <> inp) add mr pl ()
 {-# INLINE reparse #-}
 
 -- -----------------------------------------------------------------------------
@@ -300,9 +300,9 @@ upto n p = go n
 --   lazily.
 chainParsers :: (ParseInput b) => Parser b c -> Parser a b -> Parser a c
 chainParsers pb pa
-   = P $ \ !pStA fl sc ->
-         runP pa pStA  fl $
-           \ !pStA' inpB ->
+   = P $ \ inpA addA mrA plA fl sc ->
+         runP pa inpA addA mrA plA  fl $
+           \ inpA' addA' mrA' plA' inpB ->
               -- We need to explicitly run the parser and use a case
               -- statement, as the types for the failure and success
               -- cases won't match if we just use runP.
@@ -311,8 +311,8 @@ chainParsers pb pa
               -- have to worry about that here, hence why it's safe to
               -- use runParser.
               case fst $ runParser pb' inpB of
-                Right a  -> sc pStA' a
-                Left plb -> fl pStA' (Message "Failure running chained parser") -- SubLog plb
+                Right a  -> sc inpA' addA' mrA' plA' a
+                Left plb -> fl inpA' addA' mrA' plA' (Message "Failure running chained parser") -- SubLog plb
   where
     pb' = addStackTrace "Running chained parser:" pb
 {-# INLINE chainParsers #-}
@@ -344,7 +344,7 @@ failMessage e = (`onFail` fail e)
 -- | A convenient function to produce (reasonably) pretty stack traces
 --   for parsing failures.
 addStackTrace :: ParseError s -> Parser s a -> Parser s a
-addStackTrace e p = P $ \ !pSt fl sc -> runP p (pSt `addToLog` e) fl sc
+addStackTrace e p = P $ \ inp add mr pl fl sc -> runP p inp add mr (pl |> e) fl sc
 
 -- | As with 'addStackTrace' but raise the severity of the error (same
 --   relationship as between 'failBad' and 'fail').
@@ -370,15 +370,16 @@ oneOf' = go id
 
     -- Can't use <|> here as we want access to `e'.  Otherwise this is
     -- pretty much a duplicate of onFail.
-    go errs ((nm,p):ps) = P $ \ !pSt fl sc ->
+    go errs ((nm,p):ps) = P $ \ inp add mr pl fl sc ->
       let go' e = go (errs . ((nm,e):)) ps
           -- When we fail (and the parser isn't committed), recurse
           -- and try the next parser whilst saving the error message.
-          fl' !pSt' e = mergeIncremental pSt pSt' $
-            \ !pSt'' -> runP (go' . completeLog $ createFinalLog (parseLog pSt') e) pSt'' fl sc
+          fl' inp' add' mr' pl' e = mergeIncremental inp add mr pl inp' add' mr' pl' $
+            \ inp'' add'' mr'' pl'' -> runP (go' . completeLog $ createFinalLog pl'' e)
+                                            inp'' add'' mr'' pl'' fl sc
 
-          sc' !pSt' = sc (prependAdditional pSt pSt')
+          sc' inp' add' mr' pl' = sc inp' (add <> add') mr' pl'
           -- Put back in the original additional input.
-      in runP p (ignoreAdditional pSt { parseLog = mempty }) fl' sc'
+      in ignoreAdditional inp add mr mempty $ \ inp' add' mr' pl' -> runP p inp' add' mr' pl' fl' sc'
            -- Note: we only consider the AdjErr from the provided
            -- parser, not the global one.
