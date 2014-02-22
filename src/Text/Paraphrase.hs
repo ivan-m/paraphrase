@@ -62,6 +62,7 @@ module Text.Paraphrase
        , prettyLog
          -- ** Convenience functions
          -- $stacktraces
+       , (<?>)
        , failMessage
        , addStackTrace
        , addStackTraceBad
@@ -334,6 +335,13 @@ These combinators are already used in some of the combinators defined
 in this library.
 
 -}
+
+-- | Name the parser, as a shorter variant of specifying a longer
+--   error message.
+(<?>) :: Parser s a -> String -> Parser s a
+p <?> f = addStackTrace (ParserName f) p
+{-# INLINE (<?>) #-}
+infix 0 <?>
 
 -- | A convenient combinator to specify what the error message of a
 --   combinator should be.

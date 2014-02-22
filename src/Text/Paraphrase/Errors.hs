@@ -46,6 +46,7 @@ data ParseError s
   | UnexpectedToken (Token s)            -- ^ Token found that did not match what was required/expected.
   | MissingItemCount Int                 -- ^ Expected this many more items that were not found.
   | Message String                       -- ^ Can be created via the @OverloadedStrings@ pragma.
+  | ParserName String                    -- ^ Used with '<?>'.
   | Committed
   | NamedSubLogs [(String, [TaggedError s])]
   | SubLog [TaggedError s]
@@ -63,6 +64,7 @@ instance (ParseInput s, NFData s, NFData (Token s)) => NFData (ParseError s) whe
   rnf (UnexpectedToken t)    = rnf t
   rnf (MissingItemCount n)   = rnf n
   rnf (Message msg)          = rnf msg
+  rnf (ParserName nm)        = rnf nm
   rnf (NamedSubLogs spls)    = rnf spls
   rnf (SubLog pl)            = rnf pl
   rnf _                      = ()
