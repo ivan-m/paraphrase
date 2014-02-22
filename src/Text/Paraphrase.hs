@@ -334,6 +334,9 @@ to follow the trail of errors.
 These combinators are already used in some of the combinators defined
 in this library.
 
+Note that functions such as 'failMessage' will /not/ work when applied
+to a 'commit'ted combinator.
+
 -}
 
 -- | Name the parser, as a shorter variant of specifying a longer
