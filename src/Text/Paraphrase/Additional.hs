@@ -69,4 +69,4 @@ requestInput inp add _mr pl fl sc = Partial partialLog $ \ s ->
      then fl inp add Complete pl
      else sc (inp <> I s) (add <> A s) Incomplete pl
   where
-    partialLog = createFinalLog pl AwaitingInput
+    partialLog = createFinalLog pl AwaitingInput (unI inp)

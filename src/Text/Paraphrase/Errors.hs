@@ -12,8 +12,11 @@
  -}
 module Text.Paraphrase.Errors
   ( ParseError (..)
+  , TaggedError
+  , parseError
+  , errorLocation
   , ParseLog -- Constructor not exported!
-  , (|>)
+  , logError
   , ParsingErrors
   , createFinalLog
   , finalError
@@ -31,18 +34,21 @@ import Data.String         (IsString (..))
 
 -- -----------------------------------------------------------------------------
 
--- | The possible errors that could arise when parsing.
+-- | The possible errors that could arise when parsing.  Please note
+--   that to an extent, \"errors\" is a bit of a misnomer, as these
+--   are also used for general logging whilst parsing, though these
+--   logs are only provided when an actual error arises.
 data ParseError s
   = UnexpectedEndOfInput
   | NoMoreInputExpected -- ^ When more input requested after being told there isn't any more.
-  | ExpectedEndOfInput s
+  | ExpectedEndOfInput
   | ExpectedButFound (Token s) (Token s) -- ^ The token that was expected/required.
   | UnexpectedToken (Token s)            -- ^ Token found that did not match what was required/expected.
-  | MissingItemCount Int s               -- ^ Expected this many more items that were not found.
+  | MissingItemCount Int                 -- ^ Expected this many more items that were not found.
   | Message String                       -- ^ Can be created via the @OverloadedStrings@ pragma.
   | Committed
-  | NamedSubLogs [(String, [ParseError s])]
-  | SubLog [ParseError s]
+  | NamedSubLogs [(String, [TaggedError s])]
+  | SubLog [TaggedError s]
   | AwaitingInput                        -- ^ Within a 'Partial' result type.
 
 -- Need to make these instances separate for GHC to be happy; hence
@@ -53,10 +59,9 @@ deriving instance (ParseInput s, Show s, Show (Token s)) => Show (ParseError s)
 deriving instance (ParseInput s, Read s, Read (Token s)) => Read (ParseError s)
 
 instance (ParseInput s, NFData s, NFData (Token s)) => NFData (ParseError s) where
-  rnf (ExpectedEndOfInput s) = rnf s
   rnf (ExpectedButFound e f) = rnf e `seq` rnf f
   rnf (UnexpectedToken t)    = rnf t
-  rnf (MissingItemCount n s) = rnf n `seq` rnf s
+  rnf (MissingItemCount n)   = rnf n
   rnf (Message msg)          = rnf msg
   rnf (NamedSubLogs spls)    = rnf spls
   rnf (SubLog pl)            = rnf pl
@@ -65,8 +70,23 @@ instance (ParseInput s, NFData s, NFData (Token s)) => NFData (ParseError s) whe
 instance IsString (ParseError s) where
  fromString = Message
 
+-- | A 'ParseError' tagged with the current input at the location of
+--   where it arose.
+data TaggedError s = TE { parseError    :: !(ParseError s)
+                          -- ^ The error that arose.
+                        , errorLocation :: !s
+                          -- ^ The current input when the error arose.
+                        }
 
-newtype ParseLog s = PL { getLog :: [ParseError s] -> [ParseError s]  }
+deriving instance (ParseInput s, Eq   s, Eq   (Token s)) => Eq   (TaggedError s)
+deriving instance (ParseInput s, Ord  s, Ord  (Token s)) => Ord  (TaggedError s)
+deriving instance (ParseInput s, Show s, Show (Token s)) => Show (TaggedError s)
+deriving instance (ParseInput s, Read s, Read (Token s)) => Read (TaggedError s)
+
+instance (ParseInput s, NFData s, NFData (Token s)) => NFData (TaggedError s) where
+  rnf (TE pe el) = rnf pe `seq` rnf el
+
+newtype ParseLog s = PL { getLog :: [TaggedError s] -> [TaggedError s]  }
 
 instance (ParseInput s, Eq s, Eq (Token s)) => Eq (ParseLog s) where
   (==) = (==) `on` ($[]) . getLog
@@ -80,19 +100,17 @@ instance Monoid (ParseLog s) where
   mappend (PL l1) (PL l2) = PL (l1 . l2)
 
 -- | Add a @ParseError@ to the end of the log.
-(|>) :: ParseLog s -> ParseError s -> ParseLog s
-(|>) pl e = pl { getLog = getLog pl . (e:) }
+logError :: ParseLog s -> ParseError s -> s -> ParseLog s
+logError pl e inp = pl { getLog = getLog pl . ((TE e inp):) }
 
-infixl 5 |>
-
-createFinalLog :: ParseLog s -> ParseError s -> ParsingErrors s
-createFinalLog = PEs
+createFinalLog :: ParseLog s -> ParseError s -> s -> ParsingErrors s
+createFinalLog pl e inp = PEs pl (TE e inp)
 
 -- | The log of errors from parsing.
 data ParsingErrors s = PEs { errorLog   :: ParseLog s
                            -- | The error which caused the parsing to
                            -- fail.
-                           , finalError :: ParseError s
+                           , finalError :: TaggedError s
                            }
 
 -- | Only shows 'finalError' to avoid cluttering the entire output.
@@ -103,9 +121,9 @@ instance (ParseInput s, NFData s, NFData (Token s)) => NFData (ParsingErrors s) 
   rnf = rnf . completeLog
 
 -- | The complete log of errors from parsing.
-completeLog :: ParsingErrors s -> [ParseError s]
+completeLog :: ParsingErrors s -> [TaggedError s]
 completeLog = liftA2 getLog errorLog ((:[]) . finalError)
 
 -- | Create a pretty-printed version of the log.
 prettyLog :: (ParseInput s, Show s, Show (Token s)) => ParsingErrors s -> String
-prettyLog = unlines . map show . completeLog
+prettyLog = unlines . map (show . parseError) . completeLog

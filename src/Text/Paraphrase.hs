@@ -117,7 +117,7 @@ endOfInput :: (ParseInput s) => Parser s ()
 endOfInput = P $ \ inp add mr pl fl sc ->
                    if isEmpty (unI inp)
                       then sc inp add mr pl ()
-                      else fl inp add mr pl (ExpectedEndOfInput (unI inp))
+                      else fl inp add mr pl ExpectedEndOfInput
 {-# INLINE endOfInput #-}
 
 -- | Return the next token from our input if it satisfies the given
@@ -271,7 +271,7 @@ exactly n p = go n
   where
     go !c
       | c <= 0    = pure []
-      | otherwise = (:) <$> MissingItemCount c mempty `addStackTrace` p <*> go (c-1)
+      | otherwise = (:) <$> MissingItemCount c `addStackTrace` p <*> go (c-1)
       -- Need to replace that mempty...
 {-# INLINE exactly #-}
 
@@ -344,7 +344,8 @@ failMessage e = (`onFail` fail e)
 -- | A convenient function to produce (reasonably) pretty stack traces
 --   for parsing failures.
 addStackTrace :: ParseError s -> Parser s a -> Parser s a
-addStackTrace e p = P $ \ inp add mr pl fl sc -> runP p inp add mr (pl |> e) fl sc
+addStackTrace e p = P $ \ inp add mr pl fl sc ->
+  runP p inp add mr (logError pl e (unI inp)) fl sc
 
 -- | As with 'addStackTrace' but raise the severity of the error (same
 --   relationship as between 'failBad' and 'fail').
@@ -375,8 +376,9 @@ oneOf' = go id
           -- When we fail (and the parser isn't committed), recurse
           -- and try the next parser whilst saving the error message.
           fl' inp' add' mr' pl' e = mergeIncremental inp add mr pl inp' add' mr' pl' $
-            \ inp'' add'' mr'' pl'' -> runP (go' . completeLog $ createFinalLog pl'' e)
-                                            inp'' add'' mr'' pl'' fl sc
+            \ inp'' add'' mr'' pl'' ->
+              runP (go' . completeLog $ createFinalLog pl'' e (unI inp''))
+                   inp'' add'' mr'' pl'' fl sc
 
           sc' inp' add' mr' pl' = sc inp' (add <> add') mr' pl'
           -- Put back in the original additional input.

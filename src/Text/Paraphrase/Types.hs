@@ -204,7 +204,9 @@ type Success s a r = WithState s (a -> Result s r)
 -- Dum... Dum... Dum... DUMMMMMM!!!  The parsing has gone all wrong,
 -- so apply the error-message adjustment and stop doing anything.
 failure :: Failure s r
-failure inp _add _mr pl e = Failure (unI inp) (createFinalLog pl e)
+failure inp _add _mr pl e = Failure inp' (createFinalLog pl e inp')
+  where
+    inp' = unI inp
 {-# INLINE failure #-}
 
 -- Hooray!  We're all done here, and a job well done!
