@@ -79,7 +79,6 @@ import Text.Paraphrase.Inputs
 import Text.Paraphrase.Types
 
 import Control.Applicative
-import Control.Monad       (when)
 import Data.Monoid
 
 -- -----------------------------------------------------------------------------
@@ -105,12 +104,8 @@ failBad = commit . fail
 
 -- | Return the next token from the input source.
 next :: (ParseInput s) => Parser s (Token s)
-next = do
- isEmpty <$> get >>= (`when` needMoreInput)
- !inp <- get -- Call get again, as it might have changed.
- put (inputTail inp)
- pure (inputHead inp)
--- Inlining actually makes this slower... :o
+next = satisfy (const True)
+{- INLINE next #-}
 
 -- | This parser succeeds if we've reached the end of our input, and
 --   fails otherwise.
@@ -127,8 +122,7 @@ endOfInput = P $ \ inp add mr pl fl sc ->
 satisfyWith :: (ParseInput s) => (Token s -> ParseError s) -> (Token s -> Bool)
                -> Parser s (Token s)
 satisfyWith toE f = do
-  (`when` needMoreInput) =<< isEmpty <$> get
-  inp <- get -- Call get again, as it might have changed
+  inp <- ensure 1
   let !t = inputHead inp
   if f t
      then put (inputTail inp) *> pure t
