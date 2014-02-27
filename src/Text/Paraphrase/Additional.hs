@@ -32,10 +32,15 @@ needAtLeast !n = go
 
 ensure :: (ParseInput s) => Int -> Parser s s
 ensure !n = P $ \ inp add mr pl fl sc ->
-     if lengthAtLeast (unI inp) n
+     if checkLength n (unI inp)
         then sc inp add mr pl (unI inp)
         else ensure' n inp add mr pl fl sc
 {-# INLINE ensure #-}
+
+checkLength :: (ParseInput s) => Int -> s -> Bool
+checkLength 1  = not . isEmpty
+checkLength !n = (`lengthAtLeast` n)
+{-# INLINE checkLength #-}
 
 -- The un-common case is split off to avoid recursion in ensure, so
 -- that it can be inlined properly.
@@ -43,7 +48,7 @@ ensure' :: (ParseInput s) => Int -> WithState s (Failure s   r -> Success s s r 
 ensure' !n inp add mr pl fl sc = runP (needMoreInput *> go n) inp add mr pl fl sc
   where
     go !n' = P $ \ inp' add' mr' pl' fl' sc' ->
-      if lengthAtLeast (unI inp') n'
+      if checkLength n' (unI inp')
          then sc' inp' add' mr' pl' (unI inp')
          else runP (needMoreInput *> go n') inp' add' mr' pl' fl' sc'
 
