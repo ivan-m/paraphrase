@@ -122,7 +122,7 @@ endOfInput = P $ \ inp add mr pl fl sc ->
 satisfyWith :: (ParseInput s) => (Token s -> ParseError s) -> (Token s -> Bool)
                -> Parser s (Token s)
 satisfyWith toE f = do
-  inp <- ensure 1
+  inp <- getAtLeast 1
   let !t = inputHead inp
   if f t
      then put (inputTail inp) *> pure t

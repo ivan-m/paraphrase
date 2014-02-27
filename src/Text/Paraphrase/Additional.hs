@@ -30,22 +30,24 @@ needAtLeast !n = go
          else runP (needMoreInput *> go) inp add mr pl fl sc
 {-# INLINE needAtLeast #-}
 
-ensure :: (ParseInput s) => Int -> Parser s s
-ensure !n = P $ \ inp add mr pl fl sc ->
+-- | As with 'get', but require at least @n@ tokens in the input we
+--   receive.
+getAtLeast :: (ParseInput s) => Int -> Parser s s
+getAtLeast !n = P $ \ inp add mr pl fl sc ->
      if checkLength n (unI inp)
         then sc inp add mr pl (unI inp)
-        else ensure' n inp add mr pl fl sc
-{-# INLINE ensure #-}
+        else getAtLeast' n inp add mr pl fl sc
+{-# INLINE getAtLeast #-}
 
 checkLength :: (ParseInput s) => Int -> s -> Bool
 checkLength 1  = not . isEmpty
 checkLength !n = (`lengthAtLeast` n)
 {-# INLINE checkLength #-}
 
--- The un-common case is split off to avoid recursion in ensure, so
+-- The un-common case is split off to avoid recursion in getAtLeast, so
 -- that it can be inlined properly.
-ensure' :: (ParseInput s) => Int -> WithState s (Failure s   r -> Success s s r -> Result  s   r)
-ensure' !n inp add mr pl fl sc = runP (needMoreInput *> go n) inp add mr pl fl sc
+getAtLeast' :: (ParseInput s) => Int -> WithState s (Failure s   r -> Success s s r -> Result  s   r)
+getAtLeast' !n inp add mr pl fl sc = runP (needMoreInput *> go n) inp add mr pl fl sc
   where
     go !n' = P $ \ inp' add' mr' pl' fl' sc' ->
       if checkLength n' (unI inp')
