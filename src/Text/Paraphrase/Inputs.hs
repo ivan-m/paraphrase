@@ -69,54 +69,69 @@ instance ParseInput [a] where
   type Token [a] = a
 
   inputHead = head
+  {-# INLINE inputHead #-}
 
   inputTail = tail
+  {-# INLINE inputTail #-}
 
   isEmpty = null
+  {-# INLINE isEmpty #-}
 
   lengthAtLeast as n = not . null . drop (n-1) $ as
   {-# INLINE lengthAtLeast #-}
 
   breakWhen = span
+  {-# INLINE breakWhen #-}
 
 instance ParseInput SB.ByteString where
   type Token SB.ByteString = Word8
 
   inputHead = SB.unsafeHead
+  {-# INLINE inputHead #-}
 
   inputTail = SB.unsafeTail
+  {-# INLINE inputTail #-}
 
   isEmpty = SB.null
+  {-# INLINE isEmpty #-}
 
   -- length is O(1)
   lengthAtLeast bs n = SB.length bs >= n
   {-# INLINE lengthAtLeast #-}
 
   breakWhen = SB.span
+  {-# INLINE breakWhen #-}
 
 instance ParseInput LB.ByteString where
   type Token LB.ByteString = Word8
 
   inputHead = LB.head
+  {-# INLINE inputHead #-}
 
   inputTail = LB.tail
+  {-# INLINE inputTail #-}
 
   isEmpty = LB.null
+  {-# INLINE isEmpty #-}
 
   -- length is O(n)
   lengthAtLeast bs n = LB.length bs >= fromIntegral n
   {-# INLINE lengthAtLeast #-}
 
   breakWhen = LB.span
+  {-# INLINE breakWhen #-}
 
 instance ParseInput ST.Text where
   type Token ST.Text = Char
 
   inputHead = ST.unsafeHead
+  {-# INLINE inputHead #-}
 
   inputTail = ST.unsafeTail
+  {-# INLINE inputTail #-}
 
   isEmpty = ST.null
+  {-# INLINE isEmpty #-}
 
   -- We do @`quot` 2@ because UTF-16 (which Text is implemented with)
   -- code points are either 1 or 2 Word16 values.  As such do this
@@ -126,15 +141,19 @@ instance ParseInput ST.Text where
   {-# INLINE lengthAtLeast #-}
 
   breakWhen = ST.span
+  {-# INLINE breakWhen #-}
 
 instance ParseInput LT.Text where
   type Token LT.Text = Char
 
   inputHead = LT.head
+  {-# INLINE inputHead #-}
 
   inputTail = LT.tail
+  {-# INLINE inputTail #-}
 
   isEmpty = LT.null
+  {-# INLINE isEmpty #-}
 
   -- Doesn't seem to be any real alternative but to do the O(n)
   -- length.
@@ -142,6 +161,7 @@ instance ParseInput LT.Text where
   {-# INLINE lengthAtLeast #-}
 
   breakWhen = LT.span
+  {-# INLINE breakWhen #-}
 
 newtype AsChar8 s = AsChar8 { unChar8 :: s }
                     deriving (Eq, Ord, Show, Read, IsString, Monoid, NFData)
