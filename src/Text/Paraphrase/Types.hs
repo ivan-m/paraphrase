@@ -403,7 +403,7 @@ put s = P $ \ pSt pl _fl sc -> sc (pSt { input = s }) pl ()
 -- @mergeIncremental inc1 inc2@ is used when @inc2@ originally started
 -- as having the same 'received' input as @inc1@, but may have since
 -- received additional input.
-mergeIncremental :: (Monoid s) => WithState s (WithState s ((WithState s r) -> r))
+mergeIncremental :: (Monoid s) => WithState s (WithState s (WithState s r -> r))
 mergeIncremental pSt1 pl1 pSt2 _pl2 f =
   let !pSt = PSt { input = input pSt1 <> add  pSt2
                  , add   = add   pSt1 <> add  pSt2
@@ -416,6 +416,6 @@ mergeIncremental pSt1 pl1 pSt2 _pl2 f =
 
 -- A wrapper to set the additional input to be empty as we want to
 -- know solely what input _this_ parser obtains.
-ignoreAdditional :: (Monoid s) => WithState s ((WithState s r) -> r)
+ignoreAdditional :: (Monoid s) => WithState s (WithState s r -> r)
 ignoreAdditional pSt pl f = f (pSt { add = mempty }) pl
 {-# INLINE ignoreAdditional #-}
