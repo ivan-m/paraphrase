@@ -370,8 +370,13 @@ addStackTraceBad e = addStackTrace e . commit
 --
 --   * Otherwise, return all error messages.
 oneOf' :: (ParseInput s) => [(String,Parser s a)] -> Parser s a
-oneOf' = go id
+oneOf' = withoutLog . go id
   where
+    withoutLog p = P $ \ pSt fl sc ->
+                     let fl' pSt' = fl (pSt' { errLog = errLog pSt <> errLog pSt' })
+                         sc' pSt' = sc (pSt' { errLog = errLog pSt })
+                     in runP p (pSt { errLog = mempty }) fl' sc'
+
     go errs [] = failWith (NamedSubLogs (errs []))
 
     -- Can't use <|> here as we want access to `e'.  Otherwise this is
@@ -387,6 +392,6 @@ oneOf' = go id
 
           sc' pSt' pl' = sc (pSt' { add = add pSt <> add pSt' }) pl'
           -- Put back in the original additional input.
-      in ignoreAdditional pSt mempty $ \ pSt' pl' -> runP p pSt' pl' fl' sc'
+      in ignoreAdditional pSt pl $ \ pSt' -> runP p pSt' fl' sc'
            -- Note: we only consider the AdjErr from the provided
            -- parser, not the global one.
