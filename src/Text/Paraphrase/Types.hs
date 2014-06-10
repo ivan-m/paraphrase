@@ -216,16 +216,23 @@ successful :: Success s a a
 successful pSt = Success (input pSt)
 {-# INLINE successful #-}
 
+makeState :: (ParseInput s) => s -> More -> ParseState s
+makeState inp m = PSt { input       = inp
+                      , add         = mempty
+                      , more        = m
+                      , errLog      = mempty
+                      }
+
 -- | Run the parser on the provided input, providing the raw 'Result'
 --   value.
 parseInput :: (ParseInput s) => Parser s a -> s -> Result s a
-parseInput p inp = runP p (PSt inp mempty Incomplete mempty) failure successful
+parseInput p inp = runP p (makeState inp Incomplete) failure successful
 {-# INLINE parseInput #-}
 
 -- | Run a parser.
 runParser :: (ParseInput s) => Parser s a -> s
              -> (EitherResult s a, s)
-runParser p inp = resultToEither (runP p (PSt inp mempty Complete mempty) failure successful)
+runParser p inp = resultToEither (runP p (makeState inp Complete) failure successful)
 {-# INLINE runParser #-}
 
 -- | Run a parser, assuming it succeeds.  If the parser fails, use
