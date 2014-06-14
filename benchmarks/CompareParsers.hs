@@ -141,21 +141,30 @@ main = do
     , bgroup "takeWhile"
         [
           bgroup "attoparsec"
-            [ bench "B"   $ nf (AB.parse  (AB.takeWhile isChar)) b
-            , bench "BC"  $ nf (AB.parse  (AC.takeWhile isAlpha_ascii)) b
-            , bench "BL"  $ nf (ABL.parse (AB.takeWhile isChar)) bl
-            , bench "BLC" $ nf (ABL.parse (AC.takeWhile isAlpha_ascii)) bl
-            , bench "T"   $ nf (AT.parse  (AT.takeWhile isAlpha_ascii)) t
-            , bench "TL"  $ nf (ATL.parse (AT.takeWhile isAlpha_ascii)) tl
+            [ bench "B"   $ nf (AB.parse     (AB.takeWhile isChar)) b
+            , bench "Bp"  $ nf (AB.parseOnly (AB.takeWhile isChar)) b
+            , bench "BC"  $ nf (AB.parse     (AC.takeWhile isAlpha_ascii)) b
+            , bench "BCp" $ nf (AB.parseOnly (AC.takeWhile isAlpha_ascii)) b
+            , bench "BL"  $ nf (ABL.parse    (AB.takeWhile isChar)) bl
+            , bench "BLC" $ nf (ABL.parse    (AC.takeWhile isAlpha_ascii)) bl
+            , bench "T"   $ nf (AT.parse     (AT.takeWhile isAlpha_ascii)) t
+            , bench "Tp"  $ nf (AT.parseOnly (AT.takeWhile isAlpha_ascii)) t
+            , bench "TL"  $ nf (ATL.parse    (AT.takeWhile isAlpha_ascii)) tl
             ]
 
         , bgroup "paraphrase"
-            [ bench "B"   $ nf (PP.parseInput (PP.manySatisfy isChar)) b
-            , bench "BC"  $ nf (PP.parseInput (PP.manySatisfy isAlpha_ascii)) bc
-            , bench "BL"  $ nf (PP.parseInput (PP.manySatisfy isChar)) bl
-            , bench "BLC" $ nf (PP.parseInput (PP.manySatisfy isAlpha_ascii)) blc
-            , bench "T"   $ nf (PP.parseInput (PP.manySatisfy isAlpha_ascii)) t
-            , bench "TL"  $ nf (PP.parseInput (PP.manySatisfy isAlpha_ascii)) tl
+            [ bench "B"    $ nf (PP.parseInput (PP.manySatisfy isChar)) b
+            , bench "Bp"   $ nf (parseOnly     (PP.manySatisfy isChar)) b
+            , bench "BC"   $ nf (PP.parseInput (PP.manySatisfy isAlpha_ascii)) bc
+            , bench "BCp"  $ nf (parseOnly     (PP.manySatisfy isAlpha_ascii)) bc
+            , bench "BL"   $ nf (PP.parseInput (PP.manySatisfy isChar)) bl
+            , bench "BLp"  $ nf (parseOnly     (PP.manySatisfy isChar)) bl
+            , bench "BLC"  $ nf (PP.parseInput (PP.manySatisfy isAlpha_ascii)) blc
+            , bench "BLCp" $ nf (parseOnly     (PP.manySatisfy isAlpha_ascii)) blc
+            , bench "T"    $ nf (PP.parseInput (PP.manySatisfy isAlpha_ascii)) t
+            , bench "Tp"   $ nf (parseOnly     (PP.manySatisfy isAlpha_ascii)) t
+            , bench "TL"   $ nf (PP.parseInput (PP.manySatisfy isAlpha_ascii)) tl
+            , bench "TLp"  $ nf (parseOnly     (PP.manySatisfy isAlpha_ascii)) tl
             ]
         ]
     ]
