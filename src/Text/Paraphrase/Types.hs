@@ -165,14 +165,15 @@ function due to how 'commit' works.
 -- any more input expected.
 --
 -- CONVENTION: a value of this type is called something like @pSt@.
-data ParseState s = PSt { input  :: !s
+data ParseState s = PSt { input       :: !s
                           -- ^ The input we're currently parsing.
-                        , add    ::  s
+                        , add         ::  s
                           -- ^ Any additional input we may have
                           --   received since we started parsing; used
                           --   by onFail.
-                        , more   :: !More
-                        , errLog :: ParseLog s
+                        , more        :: !More
+                        , errLog      :: ParseLog s
+                        , isCommitted :: !Bool
                         }
 
 deriving instance (ParseInput s, Eq   s, Eq   (ParseLog s)) => Eq   (ParseState s)
@@ -221,6 +222,7 @@ makeState inp m = PSt { input       = inp
                       , add         = mempty
                       , more        = m
                       , errLog      = mempty
+                      , isCommitted = False
                       }
 
 -- | Run the parser on the provided input, providing the raw 'Result'
@@ -288,6 +290,9 @@ ignFirstP pa pb = P $ \ pSt fl sc ->
                           -> runP pb (pSt' { errLog = errLog pSt }) fl sc
 {-# INLINE ignFirstP #-}
 
+-- Commit isn't propagated here... and it really should be.
+-- Dammit, how can we do this?
+
 discard :: Parser s a -> Parser s b -> Parser s a
 discard pa pb = P $ \ pSt fl sc ->
                   let sc' a pSt' b = b `seq` sc pSt' a
@@ -329,24 +334,31 @@ instance (ParseInput s) => Alternative (Parser s) where
 
 onFail :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
 onFail p1 p2 = P $ \ pSt fl sc ->
-               let fl' pSt' _e
-                       = mergeIncremental pSt pSt' $
-                         \ pSt''
-                            -> runP p2 pSt'' fl sc
-                   -- If we fail, run parser p2 instead.  Don't use
-                   -- the provided @AdjErr@ value, get the "global"
-                   -- one instead (as we don't want p1's stack
-                   -- traces).  We also need to ensure that if p1
-                   -- requested and obtained additional input that we
-                   -- use it as well.
+  let fl' pSt' e
+          | isCommitted pSt' = failure (restoreAdd pSt') e
+          | otherwise        = mergeIncremental pSt pSt' $
+                                 \ pSt'' -> runP p2 pSt'' fl sc
+      -- If we fail - and aren't committed - run parser
+      -- p2 instead.  We need to ensure that if p1
+      -- requested and obtained additional input that we
+      -- use it as well.
+      --
+      -- mergeIncremental also restores the original commitment state
+      -- (doesn't really matter if p1 ended up being committed: if it
+      -- did, then we wouldn't be calling going on to p2 anyway!).
 
-                   sc' pSt' = sc (pSt' { add = add pSt <> add pSt'})
-                   -- Put back in the original additional input.
-             in ignoreAdditional pSt $ \ pSt'
-                  -> runP p1 pSt' fl' sc'
-                 -- We want to be able to differentiate the
-                 -- 'Additional' value that we already have vs any we
-                 -- may get from running @p1@.
+      sc' pSt' = sc (restoreAdd pSt')
+
+      -- Put back in the original additional input.
+      restoreAdd pSt' = pSt' { add = add pSt <> add pSt'}
+
+  in ignoreAdditional pSt $ \ pSt'
+       -> runP p1 (pSt' { isCommitted = False }) fl' sc'
+      -- We want to be able to differentiate the additional values
+      -- that we already have vs any we may get from running @p1@.
+      --
+      -- We also ignore if we are already committed, as whether we can
+      -- backtrack to p2 depends solely upon p1.
 {-# INLINE onFail #-}
 
 instance Monad (Parser s) where
@@ -387,11 +399,7 @@ instance (ParseInput s) => MonadPlus (Parser s) where
 -- some, and we want to cut down on noise).  See 'commit' from
 -- Text.Paraphrase instead.
 commitNoLog :: Parser s a -> Parser s a
-commitNoLog p = P $ \ pSt _fl sc ->
-                    -- We commit by prohibiting external sources from
-                    -- overriding our failure function (by just ignoring
-                    -- provided Failure values).
-                    runP p pSt failure sc
+commitNoLog p = P $ \ pSt fl sc -> runP p (pSt { isCommitted = True }) fl sc
 {-# INLINE commitNoLog #-}
 
 -- -----------------------------------------------------------------------------

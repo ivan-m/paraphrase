@@ -385,13 +385,19 @@ oneOf' = withoutLog . go id
       let go' e = go (errs . ((nm,e):)) ps
           -- When we fail (and the parser isn't committed), recurse
           -- and try the next parser whilst saving the error message.
-          fl' pSt' e = mergeIncremental pSt pSt' $
-            \ pSt'' ->
-              runP (go' . completeLog $ createFinalLog (errLog pSt'') e (input pSt''))
-                   pSt'' fl sc
+          fl' pSt' e
+              | isCommitted pSt' = failure (restoreAdd pSt') e
+              | otherwise        = mergeIncremental pSt pSt' $
+                                     \ pSt'' ->
+                                       runP (go' $ thisLog pSt'')  pSt'' fl sc
+            where
+              thisLog pSt'' = completeLog $ createFinalLog (errLog pSt'') e (input pSt')
 
-          sc' pSt' = sc (pSt' { add = add pSt <> add pSt' })
+          sc' pSt' = sc (restoreAdd pSt')
+
           -- Put back in the original additional input.
+          restoreAdd pSt' = pSt' { add = add pSt <> add pSt'}
+
       in ignoreAdditional pSt $ \ pSt' -> runP p pSt' fl' sc'
            -- Note: we only consider the AdjErr from the provided
            -- parser, not the global one.
