@@ -207,10 +207,12 @@ type Success s a r = ParseState s -> a -> Result s r
 -- Dum... Dum... Dum... DUMMMMMM!!!  The parsing has gone all wrong,
 -- so apply the error-message adjustment and stop doing anything.
 failure :: Failure s r
-failure pSt e = Failure inp (createFinalLog (errLog pSt) e inp)
-  where
-    inp = input pSt
+failure pSt e = Failure (input pSt) (createLogFrom pSt e)
 {-# INLINE failure #-}
+
+createLogFrom :: ParseState s -> ParseError s -> ParsingErrors s
+createLogFrom pSt e = createFinalLog (errLog pSt) e (input pSt)
+{-# INLINE createLogFrom #-}
 
 -- Hooray!  We're all done here, and a job well done!
 successful :: Success s a a

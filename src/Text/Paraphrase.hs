@@ -381,7 +381,7 @@ oneOf' = withoutLog . go id
 
     -- Can't use <|> here as we want access to `e'.  Otherwise this is
     -- pretty much a duplicate of onFail.
-    go errs ((nm,p):ps) = P $ \ pSt fl sc ->
+    go errs ((nm,p):ps) = wrapCommitment $ P $ \ pSt fl sc ->
       let go' e = go (errs . ((nm,e):)) ps
           -- When we fail (and the parser isn't committed), recurse
           -- and try the next parser whilst saving the error message.
@@ -389,9 +389,8 @@ oneOf' = withoutLog . go id
               | isCommitted pSt' = failure (restoreAdd pSt') e
               | otherwise        = mergeIncremental pSt pSt' $
                                      \ pSt'' ->
-                                       runP (go' $ thisLog pSt'')  pSt'' fl sc
-            where
-              thisLog pSt'' = completeLog $ createFinalLog (errLog pSt'') e (input pSt'')
+                                       runP (go' . completeLog $ createLogFrom pSt'' e)
+                                         pSt'' fl sc
 
           sc' pSt' = sc (restoreAdd pSt')
 
