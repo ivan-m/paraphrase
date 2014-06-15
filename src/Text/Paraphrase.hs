@@ -351,6 +351,7 @@ failMessage e = (`onFail` fail e)
 addStackTrace :: ParseError s -> Parser s a -> Parser s a
 addStackTrace e p = P $ \ pSt fl sc ->
   runP p (pSt { errLog = logError (errLog pSt) e (input pSt) }) fl sc
+{-# INLINE addStackTrace #-}
 
 -- | As with 'addStackTrace' but raise the severity of the error (same
 --   relationship as between 'failBad' and 'fail').
