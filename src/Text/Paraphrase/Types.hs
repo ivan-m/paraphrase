@@ -330,7 +330,7 @@ instance (ParseInput s) => Alternative (Parser s) where
   {-# INLINE some #-}
 
 onFail :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
-onFail p1 p2 = P $ \ pSt fl sc ->
+onFail p1 p2 = wrapCommitment $ P $ \ pSt fl sc ->
   let fl' pSt' e
           | isCommitted pSt' = failure (restoreAdd pSt') e
           | otherwise        = mergeIncremental pSt pSt' $
@@ -339,10 +339,6 @@ onFail p1 p2 = P $ \ pSt fl sc ->
       -- p2 instead.  We need to ensure that if p1
       -- requested and obtained additional input that we
       -- use it as well.
-      --
-      -- mergeIncremental also restores the original commitment state
-      -- (doesn't really matter if p1 ended up being committed: if it
-      -- did, then we wouldn't be calling going on to p2 anyway!).
 
       sc' pSt' = sc (restoreAdd pSt')
 
@@ -350,13 +346,23 @@ onFail p1 p2 = P $ \ pSt fl sc ->
       restoreAdd pSt' = pSt' { add = add pSt <> add pSt'}
 
   in ignoreAdditional pSt $ \ pSt'
-       -> runP p1 (pSt' { isCommitted = False }) fl' sc'
+       -> runP p1 pSt' fl' sc'
       -- We want to be able to differentiate the additional values
       -- that we already have vs any we may get from running @p1@.
-      --
-      -- We also ignore if we are already committed, as whether we can
-      -- backtrack to p2 depends solely upon p1.
 {-# INLINE onFail #-}
+
+
+-- Used when you temporarily want to assume that a parser isn't
+-- committed, usually because you want to see if a component makes it
+-- committed.
+wrapCommitment :: Parser s a -> Parser s a
+wrapCommitment p = P $ \ pSt fl sc ->
+  let origCommit = isCommitted pSt
+      fl' pSt' = fl (pSt' { isCommitted = origCommit || isCommitted pSt' })
+      sc' pSt' = sc (pSt' { isCommitted = origCommit || isCommitted pSt' })
+  in runP p (pSt { isCommitted = False }) fl' sc'
+{-# INLINE wrapCommitment #-}
+
 
 instance Monad (Parser s) where
   return = returnP
