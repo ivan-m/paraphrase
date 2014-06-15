@@ -391,7 +391,7 @@ oneOf' = withoutLog . go id
                                      \ pSt'' ->
                                        runP (go' $ thisLog pSt'')  pSt'' fl sc
             where
-              thisLog pSt'' = completeLog $ createFinalLog (errLog pSt'') e (input pSt')
+              thisLog pSt'' = completeLog $ createFinalLog (errLog pSt'') e (input pSt'')
 
           sc' pSt' = sc (restoreAdd pSt')
 
