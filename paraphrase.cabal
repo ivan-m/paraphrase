@@ -14,6 +14,7 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:       Text.Paraphrase
+                       , Text.Paraphrase.Debug
 
   other-modules:         Text.Paraphrase.Additional
                        , Text.Paraphrase.Errors

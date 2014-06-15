@@ -51,6 +51,7 @@ data ParseError s
   | NamedSubLogs [(String, [TaggedError s])]
   | SubLog [TaggedError s]
   | AwaitingInput                        -- ^ Within a 'Partial' result type.
+  | LogRequested                         -- ^ Used with "Text.Paraphrase.Debug".
 
 -- Need to make these instances separate for GHC to be happy; hence
 -- also the various language pragmas above.
