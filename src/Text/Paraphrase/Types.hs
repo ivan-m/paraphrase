@@ -226,6 +226,7 @@ makeState inp m = PSt { input       = inp
                       , errLog      = mempty
                       , isCommitted = False
                       }
+{-# INLINE makeState #-}
 
 -- | Run the parser on the provided input, providing the raw 'Result'
 --   value.
