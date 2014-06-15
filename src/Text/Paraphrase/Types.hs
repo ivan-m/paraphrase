@@ -400,8 +400,18 @@ instance (ParseInput s) => MonadPlus (Parser s) where
 -- For internal use only (as it's used in the definitions of many and
 -- some, and we want to cut down on noise).  See 'commit' from
 -- Text.Paraphrase instead.
-commitNoLog :: Parser s a -> Parser s a
-commitNoLog p = P $ \ pSt fl sc -> runP p (pSt { isCommitted = True }) fl sc
+--
+-- Note that we only keep the additional input around in case we
+-- backtrack and need to restore what was added when going to a
+-- different branch.  As such, since commit doesn't allow
+-- backtracking, there's no point keeping the additional input around
+-- as it won't get used!.
+commitNoLog :: (ParseInput s) => Parser s a -> Parser s a
+commitNoLog p = P $ \ pSt fl sc ->
+  let  pSt' = pSt { add         = mempty
+                  , isCommitted = True
+                  }
+  in runP p pSt' fl sc
 {-# INLINE commitNoLog #-}
 
 -- -----------------------------------------------------------------------------

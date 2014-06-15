@@ -89,13 +89,13 @@ import Data.Monoid
 --
 --   That is, @commit p1 \<|\> p2@ is equivalent to just @p1@ (though
 --   also preventing any other usage of @'<|>'@ that might occur).
-commit :: Parser s a -> Parser s a
+commit :: (ParseInput s) => Parser s a -> Parser s a
 commit = addStackTrace Committed . commitNoLog
 {-# INLINE commit #-}
 
 -- | A combination of 'fail' and 'commit': specify a failure that
 --   cannot be recovered from.
-failBad :: String -> Parser s a
+failBad :: (ParseInput s) => String -> Parser s a
 failBad = commit . fail
 {-# INLINE failBad #-}
 
@@ -354,7 +354,7 @@ addStackTrace e p = P $ \ pSt fl sc ->
 
 -- | As with 'addStackTrace' but raise the severity of the error (same
 --   relationship as between 'failBad' and 'fail').
-addStackTraceBad :: ParseError s -> Parser s a -> Parser s a
+addStackTraceBad :: (ParseInput s) => ParseError s -> Parser s a -> Parser s a
 addStackTraceBad e = addStackTrace e . commit
 {-# INLINE addStackTraceBad #-}
 
