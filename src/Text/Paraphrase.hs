@@ -177,7 +177,8 @@ someSatisfy f = do r <- manySatisfy f
 --   expand it, and push the expanded version back onto the stream
 --   ready to parse normally.
 reparse :: (ParseInput s) => s -> Parser s ()
-reparse s = P $ \ pSt _fl sc -> sc (pSt { input = s <> input pSt }) ()
+reparse s = addStackTrace (Reparse s)
+              (P $ \ pSt _fl sc -> sc (pSt { input = s <> input pSt }) ())
 {-# INLINE reparse #-}
 
 -- -----------------------------------------------------------------------------

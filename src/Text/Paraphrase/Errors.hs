@@ -47,6 +47,7 @@ data ParseError s
   | MissingItemCount Int                 -- ^ Expected this many more items that were not found.
   | Message String                       -- ^ Can be created via the @OverloadedStrings@ pragma.
   | ParserName String                    -- ^ Used with '<?>'.
+  | Reparse s                            -- ^ Additional input added to front.
   | Committed
   | NamedSubLogs [(String, [TaggedError s])]
   | SubLog [TaggedError s]
