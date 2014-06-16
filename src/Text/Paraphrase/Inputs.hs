@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving, TypeFamilies #-}
 {- |
    Module      : Text.Paraphrase.Inputs
    Description : Defining possible inputs for parsing
@@ -166,7 +166,19 @@ instance ParseInput LT.Text where
 newtype AsChar8 s = AsChar8 { unChar8 :: s }
                     deriving (Eq, Ord, Show, Read, IsString, Monoid, NFData)
 
-instance (ParseInput s, Token s ~ Word8) => ParseInput (AsChar8 s) where
+class (ParseInput s, Token s ~ Word8) => Word8Input s where
+  toWord8List :: s -> [Word8]
+
+instance Word8Input [Word8] where
+  toWord8List = id
+
+instance Word8Input SB.ByteString where
+  toWord8List = SB.unpack
+
+instance Word8Input LB.ByteString where
+  toWord8List = concatMap SB.unpack . LB.toChunks
+
+instance (Word8Input s) => ParseInput (AsChar8 s) where
   type Token (AsChar8 s) = Char
 
   inputHead (AsChar8 s) = w2c $! inputHead s

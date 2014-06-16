@@ -26,6 +26,7 @@ module Text.Paraphrase
          -- ** Parser input
        , ParseInput (..)
        , AsChar8(..)
+       , Word8Input(..)
 
          -- * Parser combinators
        , next
