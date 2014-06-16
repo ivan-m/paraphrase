@@ -67,6 +67,7 @@ instance (ParseInput s, NFData s, NFData (Token s)) => NFData (ParseError s) whe
   rnf (MissingItemCount n)   = rnf n
   rnf (Message msg)          = rnf msg
   rnf (ParserName nm)        = rnf nm
+  rnf (Reparse s)            = rnf s
   rnf (NamedSubLogs spls)    = rnf spls
   rnf (SubLog pl)            = rnf pl
   rnf _                      = ()
