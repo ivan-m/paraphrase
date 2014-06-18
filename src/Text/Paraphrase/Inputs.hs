@@ -182,12 +182,16 @@ instance (Word8Input s) => ParseInput (AsChar8 s) where
   type Token (AsChar8 s) = Char
 
   inputHead (AsChar8 s) = w2c $! inputHead s
+  {-# INLINE inputHead #-}
 
   inputTail = AsChar8 . inputTail . unChar8
+  {-# INLINE inputTail #-}
 
   isEmpty = isEmpty . unChar8
+  {-# INLINE isEmpty #-}
 
   lengthAtLeast s = lengthAtLeast (unChar8 s)
   {-# INLINE lengthAtLeast #-}
 
   breakWhen f = (AsChar8 *** AsChar8) . breakWhen (f . w2c) . unChar8
+  {-# INLINE breakWhen #-}
