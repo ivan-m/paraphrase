@@ -24,7 +24,7 @@ import qualified Data.Text.Lazy             as LT
 import qualified Data.Text.Unsafe           as ST
 import           Data.Word                  (Word8)
 
-import Control.Arrow   (second)
+import Control.Arrow   ((***))
 import Control.DeepSeq (NFData)
 import Data.Monoid
 import Data.IsNull
@@ -203,10 +203,29 @@ instance ParseInput LT.Text where
   breakWhen = LT.span
   {-# INLINE breakWhen #-}
 
-newtype AsChar8 s = AsChar8 { unChar8 :: s }
-                    deriving (Eq, Ord, Show, Read, IsString, Monoid, NFData)
+-- -----------------------------------------------------------------------------
 
-class (TokenStream s, Token s ~ Word8) => Word8Input s where
+-- | A wrapper to be able to parse 'Word8'-based types
+--   (e.g. 'SB.ByteString') as if they actually contained
+--   Latin1-encoded 'Char' values.
+--
+--   Note that the 'Stream' is itself rather than the raw type
+--   underneath; this is primarily so that when printing error
+--   messages the 'Char'-based representation is used rather than the
+--   raw bytes.
+--
+--   As such, you will need to wrap any input (including additional
+--   input) with the constructor.
+--
+--   This type must be applied directly to the actual type for it to
+--   work.
+newtype AsChar8 s = AsChar8 { unChar8 :: s }
+                    deriving (Eq, Ord, Show, Read, IsString, Monoid, NFData, IsNull)
+
+-- | For values that store 'Word8's.  The constraints are used more to
+--   minimise the required constraints for 'AsChar8' instances than
+--   because this typeclass needs/assumes them.
+class (ParseInput s, Stream s ~ s, Token s ~ Word8) => Word8Input s where
   toWord8List :: s -> [Word8]
 
 instance Word8Input [Word8] where
@@ -218,25 +237,12 @@ instance Word8Input SB.ByteString where
 instance Word8Input LB.ByteString where
   toWord8List = concatMap SB.unpack . LB.toChunks
 
-instance (ParseInput s, Word8Input s) => TokenStream (AsChar8 s) where
-  type Stream (AsChar8 s) = Stream s
+instance (Word8Input s) => TokenStream (AsChar8 s) where
+  type Stream (AsChar8 s) = AsChar8 s
 
   type Token (AsChar8 s) = Char
 
-instance (ParseInput s,  Word8Input s) => ParseInput (AsChar8 s) where
-
-  getStream = getStream . unChar8
-  {-# INLINE getStream #-}
-
-  fromStream = AsChar8 . fromStream
-  {-# INLINE fromStream #-}
-
-  prependStream p (AsChar8 s) = AsChar8 (p `prependStream` s)
-  {-# INLINE prependStream #-}
-
-  appendStream (AsChar8 s) a = AsChar8 (s `appendStream` a)
-  {-# INLINE appendStream #-}
-
+instance (Word8Input s) => ParseInput (AsChar8 s) where
   inputHead (AsChar8 s) = w2c $! inputHead s
   {-# INLINE inputHead #-}
 
@@ -246,5 +252,5 @@ instance (ParseInput s,  Word8Input s) => ParseInput (AsChar8 s) where
   lengthAtLeast s = lengthAtLeast (unChar8 s)
   {-# INLINE lengthAtLeast #-}
 
-  breakWhen f = second AsChar8 . breakWhen (f . w2c) . unChar8
+  breakWhen f = (AsChar8 *** AsChar8) . breakWhen (f . w2c) . unChar8
   {-# INLINE breakWhen #-}
