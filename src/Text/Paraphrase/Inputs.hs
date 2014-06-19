@@ -110,6 +110,9 @@ isEmpty :: (ParseInput s) => s -> Bool
 isEmpty = isNull . getStream
 {-# INLINE isEmpty #-}
 
+-- -----------------------------------------------------------------------------
+-- Instances for various concrete types.
+
 instance TokenStream [a] where
   type Token [a] = a
 
@@ -204,6 +207,7 @@ instance ParseInput LT.Text where
   {-# INLINE breakWhen #-}
 
 -- -----------------------------------------------------------------------------
+-- How to treat Word8-based types as if they contained Char values.
 
 -- | A wrapper to be able to parse 'Word8'-based types
 --   (e.g. 'SB.ByteString') as if they actually contained
