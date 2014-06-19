@@ -16,6 +16,7 @@ import Text.Paraphrase.Inputs
 import Text.Paraphrase.Types
 
 import Control.Applicative
+import Data.IsNull
 import Data.Monoid
 
 -- -----------------------------------------------------------------------------
@@ -75,8 +76,8 @@ requestInput :: (ParseInput s) =>
                -> (ParseState s -> Result s r) -- Success case
                -> Result s r
 requestInput pSt fl sc = Partial partialLog $ \ s ->
-  if isEmpty s
+  if isNull s
      then fl (pSt { more = Complete })
-     else sc (pSt { input = input pSt <> s, add = add pSt <> s })
+     else sc (pSt { input = input pSt `appendStream` s, add = add pSt <> s })
   where
     partialLog = createFinalLog (errLog pSt) AwaitingInput (input pSt)

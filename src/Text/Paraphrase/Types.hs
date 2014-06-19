@@ -14,7 +14,7 @@
 module Text.Paraphrase.Types where
 
 import Text.Paraphrase.Errors
-import Text.Paraphrase.Inputs (ParseInput (..))
+import Text.Paraphrase.Inputs (ParseInput (..), TokenStream (..))
 
 import Control.Applicative
 import Control.DeepSeq     (NFData (rnf))
@@ -52,7 +52,7 @@ See also the provided conventions for referring to values of type
 --   traces, etc.) if so desired.
 data Result s a = Success s a
                 | Failure s (ParsingErrors s)
-                | Partial   (ParsingErrors s) (s -> Result s a)
+                | Partial   (ParsingErrors s) (Stream s -> Result s a)
                   -- ^ Indicates that the parser requires more input
                   --   to continue.
                   --
@@ -61,7 +61,7 @@ data Result s a = Success s a
                   --   your own code.
 
 -- | Nonsensical for 'Partial'.
-instance (ParseInput s, Show s, Show (Token s), Show a) => Show (Result s a) where
+instance (ParseInput s, Show s, Show (Stream s), Show (Token s), Show a) => Show (Result s a) where
   showsPrec d r = showParen (d > 10) $
                     case r of
                       Success s a   -> showString "Success "
@@ -82,7 +82,7 @@ instance Functor (Result s) where
   fmap _ (Failure s pl)   = Failure s pl
   fmap f (Partial pl cnt) = Partial pl (fmap f . cnt)
 
-instance (ParseInput s, NFData s, NFData (Token s), NFData a) => NFData (Result s a) where
+instance (ParseInput s, NFData s, NFData (Stream s), NFData (Token s), NFData a) => NFData (Result s a) where
   rnf (Success s a)  = rnf s `seq` rnf a
   rnf (Failure s pl) = rnf s `seq` rnf pl
   rnf (Partial pl _) = rnf pl
@@ -95,7 +95,7 @@ type EitherResult s a = Either (ParsingErrors s) a
 resultToEither :: (ParseInput s) => Result s a -> (EitherResult s a, s)
 resultToEither (Success s a)     = (Right a, s)
 resultToEither (Failure s pl)    = (Left pl, s)
-resultToEither (Partial pl _cnt) = (Left pl, mempty)
+resultToEither (Partial pl _cnt) = (Left pl, fromStream mempty)
 
 -- -----------------------------------------------------------------------------
 -- Parser definition
@@ -167,7 +167,7 @@ function due to how 'commit' works.
 -- CONVENTION: a value of this type is called something like @pSt@.
 data ParseState s = PSt { input       :: !s
                           -- ^ The input we're currently parsing.
-                        , add         ::  s
+                        , add         ::  Stream s
                           -- ^ Any additional input we may have
                           --   received since we started parsing; used
                           --   by onFail.
@@ -176,10 +176,10 @@ data ParseState s = PSt { input       :: !s
                         , isCommitted :: !Bool
                         }
 
-deriving instance (ParseInput s, Eq   s, Eq   (ParseLog s)) => Eq   (ParseState s)
-deriving instance (ParseInput s, Ord  s, Ord  (ParseLog s)) => Ord  (ParseState s)
-deriving instance (ParseInput s, Show s, Show (ParseLog s)) => Show (ParseState s)
-deriving instance (ParseInput s, Read s, Read (ParseLog s)) => Read (ParseState s)
+deriving instance (ParseInput s, Eq   s, Eq   (Stream s), Eq   (ParseLog s)) => Eq   (ParseState s)
+deriving instance (ParseInput s, Ord  s, Ord  (Stream s), Ord  (ParseLog s)) => Ord  (ParseState s)
+deriving instance (ParseInput s, Show s, Show (Stream s), Show (ParseLog s)) => Show (ParseState s)
+deriving instance (ParseInput s, Read s, Read (Stream s), Read (ParseLog s)) => Read (ParseState s)
 
 -- Have we read all available input?
 --
@@ -219,8 +219,8 @@ successful :: Success s a a
 successful pSt = Success (input pSt)
 {-# INLINE successful #-}
 
-makeState :: (ParseInput s) => s -> More -> ParseState s
-makeState inp m = PSt { input       = inp
+makeState :: (ParseInput s) => Stream s -> More -> ParseState s
+makeState inp m = PSt { input       = fromStream inp
                       , add         = mempty
                       , more        = m
                       , errLog      = mempty
@@ -230,19 +230,18 @@ makeState inp m = PSt { input       = inp
 
 -- | Run the parser on the provided input, providing the raw 'Result'
 --   value.
-parseInput :: (ParseInput s) => Parser s a -> s -> Result s a
+parseInput :: (ParseInput s) => Parser s a -> Stream s -> Result s a
 parseInput p inp = runP p (makeState inp Incomplete) failure successful
 {-# INLINE parseInput #-}
 
 -- | Run a parser.
-runParser :: (ParseInput s) => Parser s a -> s
-             -> (EitherResult s a, s)
+runParser :: (ParseInput s) => Parser s a -> Stream s -> (EitherResult s a, s)
 runParser p inp = resultToEither (runP p (makeState inp Complete) failure successful)
 {-# INLINE runParser #-}
 
 -- | Run a parser, assuming it succeeds.  If the parser fails, use
 --   'error' to display the message.
-runParser' :: (ParseInput s, Show s, Show (Token s)) => Parser s a -> s -> a
+runParser' :: (ParseInput s) => Parser s a -> Stream s -> a
 runParser' p inp = case fst $ runParser p inp of
                      Right a -> a
                      Left pl -> error ('\n' : prettyLog pl)
@@ -434,12 +433,12 @@ put s = P $ \ pSt _fl sc -> sc (pSt { input = s }) ()
 -- @mergeIncremental inc1 inc2@ is used when @inc2@ originally started
 -- as having the same 'received' input as @inc1@, but may have since
 -- received additional input.
-mergeIncremental :: (Monoid s) => ParseState s -> ParseState s
+mergeIncremental :: (ParseInput s) => ParseState s -> ParseState s
                     -> (ParseState s -> r) -> r
 mergeIncremental pSt1 pSt2 f =
-  let !pSt = pSt1 { input = input pSt1 <> add  pSt2
-                  , add   = add   pSt1 <> add  pSt2
-                  , more  = more  pSt1 <> more pSt2
+  let !pSt = pSt1 { input = input pSt1 `appendStream` add  pSt2
+                  , add   = add   pSt1 <>             add  pSt2
+                  , more  = more  pSt1 <>             more pSt2
                   }
                   -- We only want the original log, not what may have
                   -- happened since they split.
@@ -448,6 +447,6 @@ mergeIncremental pSt1 pSt2 f =
 
 -- A wrapper to set the additional input to be empty as we want to
 -- know solely what input _this_ parser obtains.
-ignoreAdditional :: (Monoid s) => ParseState s -> (ParseState s -> r) -> r
+ignoreAdditional :: (ParseInput s) => ParseState s -> (ParseState s -> r) -> r
 ignoreAdditional pSt f = f (pSt { add = mempty })
 {-# INLINE ignoreAdditional #-}

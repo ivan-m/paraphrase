@@ -80,6 +80,7 @@ import Text.Paraphrase.Inputs
 import Text.Paraphrase.Types
 
 import Control.Applicative
+import Data.IsNull         (isNull)
 import Data.Monoid
 
 -- -----------------------------------------------------------------------------
@@ -148,7 +149,7 @@ oneOf = foldr (<|>) (fail "Failed to parse any of the possible choices")
 -- | Parse as many tokens that satisfy the predicate as possible.
 --   This is a more efficient (and possibly fused) version of @'many'
 --   ('satisfy' p)@.
-manySatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s s
+manySatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s (Stream s)
 manySatisfy f = go
   where
     go = P $ \ pSt fl sc ->
@@ -164,9 +165,9 @@ manySatisfy f = go
 -- | Parse as many tokens that satisfy the predicate as possible, but
 --   require at least one.  This is a more efficient (and possibly
 --   fused) version of @'some' ('satisfy' p)@.
-someSatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s s
+someSatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s (Stream s)
 someSatisfy f = do r <- manySatisfy f
-                   if isEmpty r
+                   if isNull r
                       then fail "someSatisfy: failed"
                       else return r
 {-# INLINE someSatisfy #-}
@@ -177,9 +178,9 @@ someSatisfy f = do r <- manySatisfy f
 --   A possible use would be for expanding macros: parse a macro,
 --   expand it, and push the expanded version back onto the stream
 --   ready to parse normally.
-reparse :: (ParseInput s) => s -> Parser s ()
+reparse :: (ParseInput s) => Stream s -> Parser s ()
 reparse s = addStackTrace (Reparse s)
-              (P $ \ pSt _fl sc -> sc (pSt { input = s <> input pSt }) ())
+              (P $ \ pSt _fl sc -> sc (pSt { input = s `prependStream` input pSt }) ())
 {-# INLINE reparse #-}
 
 -- -----------------------------------------------------------------------------
@@ -307,7 +308,7 @@ chainParsers pb pa
               -- pa will deal with getting more input, so we don't
               -- have to worry about that here, hence why it's safe to
               -- use runParser.
-              case fst $ runParser pb' inpB of
+              case fst $ runParser pb' (getStream inpB) of
                 Right a  -> sc pStA' a
                 Left plb -> fl pStA' (Message "Failure running chained parser") -- SubLog plb
   where
