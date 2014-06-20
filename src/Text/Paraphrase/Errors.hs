@@ -57,9 +57,7 @@ data ParseError s
 -- Need to make these instances separate for GHC to be happy; hence
 -- also the various language pragmas above.
 deriving instance (TokenStream s, Eq   s, Eq   (Stream s), Eq   (Token s)) => Eq   (ParseError s)
-deriving instance (TokenStream s, Ord  s, Ord  (Stream s), Ord  (Token s)) => Ord  (ParseError s)
 deriving instance (TokenStream s, Show s, Show (Stream s), Show (Token s)) => Show (ParseError s)
-deriving instance (TokenStream s, Read s, Read (Stream s), Read (Token s)) => Read (ParseError s)
 
 -- | Orphan instance needed for 'ParseError's instance.
 instance NFData Doc where
@@ -91,9 +89,7 @@ data TaggedError s = TE { parseError    :: !(ParseError s)
                         }
 
 deriving instance (TokenStream s, Eq   s, Eq   (Stream s), Eq   (Token s)) => Eq   (TaggedError s)
-deriving instance (TokenStream s, Ord  s, Ord  (Stream s), Ord  (Token s)) => Ord  (TaggedError s)
 deriving instance (TokenStream s, Show s, Show (Stream s), Show (Token s)) => Show (TaggedError s)
-deriving instance (TokenStream s, Read s, Read (Stream s), Read (Token s)) => Read (TaggedError s)
 
 instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s)) => NFData (TaggedError s) where
   rnf (TE pe el) = rnf pe `seq` rnf el
