@@ -176,10 +176,10 @@ data ParseState s = PSt { input       :: !s
                         , isCommitted :: !Bool
                         }
 
-deriving instance (ParseInput s, Eq   s, Eq   (Stream s), Eq   (ParseLog s)) => Eq   (ParseState s)
-deriving instance (ParseInput s, Ord  s, Ord  (Stream s), Ord  (ParseLog s)) => Ord  (ParseState s)
-deriving instance (ParseInput s, Show s, Show (Stream s), Show (ParseLog s)) => Show (ParseState s)
-deriving instance (ParseInput s, Read s, Read (Stream s), Read (ParseLog s)) => Read (ParseState s)
+deriving instance (TokenStream s, Eq   s, Eq   (Stream s), Eq   (Token s), Eq   (ParseLog s)) => Eq   (ParseState s)
+deriving instance (TokenStream s, Ord  s, Ord  (Stream s), Ord  (Token s), Ord  (ParseLog s)) => Ord  (ParseState s)
+deriving instance (TokenStream s, Show s, Show (Stream s), Show (Token s), Show (ParseLog s)) => Show (ParseState s)
+deriving instance (TokenStream s, Read s, Read (Stream s), Show (Token s), Read (ParseLog s)) => Read (ParseState s)
 
 -- Have we read all available input?
 --

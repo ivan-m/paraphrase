@@ -56,12 +56,19 @@ data ParseError s
 
 -- Need to make these instances separate for GHC to be happy; hence
 -- also the various language pragmas above.
-deriving instance (ParseInput s, Eq   s, Eq   (Stream s), Eq   (Token s)) => Eq   (ParseError s)
-deriving instance (ParseInput s, Ord  s, Ord  (Stream s), Ord  (Token s)) => Ord  (ParseError s)
-deriving instance (ParseInput s, Show s, Show (Stream s), Show (Token s)) => Show (ParseError s)
-deriving instance (ParseInput s, Read s, Read (Stream s), Read (Token s)) => Read (ParseError s)
+deriving instance (TokenStream s, Eq   s, Eq   (Stream s), Eq   (Token s)) => Eq   (ParseError s)
+deriving instance (TokenStream s, Ord  s, Ord  (Stream s), Ord  (Token s)) => Ord  (ParseError s)
+deriving instance (TokenStream s, Show s, Show (Stream s), Show (Token s)) => Show (ParseError s)
+deriving instance (TokenStream s, Read s, Read (Stream s), Read (Token s)) => Read (ParseError s)
 
-instance (ParseInput s, NFData s, NFData (Stream s), NFData (Token s)) => NFData (ParseError s) where
+-- | Orphan instance needed for 'ParseError's instance.
+instance NFData Doc where
+  rnf = rnf . render
+
+instance Eq Doc where
+  (==) = (==) `on` render
+
+instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s)) => NFData (ParseError s) where
   rnf (ExpectedButFound e f) = rnf e `seq` rnf f
   rnf (UnexpectedToken t)    = rnf t
   rnf (MissingItemCount n)   = rnf n
@@ -83,20 +90,20 @@ data TaggedError s = TE { parseError    :: !(ParseError s)
                           -- ^ The current input when the error arose.
                         }
 
-deriving instance (ParseInput s, Eq   s, Eq   (Stream s), Eq   (Token s)) => Eq   (TaggedError s)
-deriving instance (ParseInput s, Ord  s, Ord  (Stream s), Ord  (Token s)) => Ord  (TaggedError s)
-deriving instance (ParseInput s, Show s, Show (Stream s), Show (Token s)) => Show (TaggedError s)
-deriving instance (ParseInput s, Read s, Read (Stream s), Read (Token s)) => Read (TaggedError s)
+deriving instance (TokenStream s, Eq   s, Eq   (Stream s), Eq   (Token s)) => Eq   (TaggedError s)
+deriving instance (TokenStream s, Ord  s, Ord  (Stream s), Ord  (Token s)) => Ord  (TaggedError s)
+deriving instance (TokenStream s, Show s, Show (Stream s), Show (Token s)) => Show (TaggedError s)
+deriving instance (TokenStream s, Read s, Read (Stream s), Read (Token s)) => Read (TaggedError s)
 
-instance (ParseInput s, NFData s, NFData (Stream s), NFData (Token s)) => NFData (TaggedError s) where
+instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s)) => NFData (TaggedError s) where
   rnf (TE pe el) = rnf pe `seq` rnf el
 
 newtype ParseLog s = PL { getLog :: [TaggedError s] -> [TaggedError s]  }
 
-instance (ParseInput s, Eq s, Eq (Stream s), Eq (Token s)) => Eq (ParseLog s) where
+instance (TokenStream s, Eq s, Eq (Stream s), Eq (Token s)) => Eq (ParseLog s) where
   (==) = (==) `on` ($[]) . getLog
 
-instance (ParseInput s, Show s, Show (Stream s), Show (Token s)) => Show (ParseLog s) where
+instance (TokenStream s, Show s, Show (Stream s), Show (Token s)) => Show (ParseLog s) where
   showsPrec d = showsPrec d . ($[]) . getLog
 
 instance Monoid (ParseLog s) where
@@ -119,10 +126,10 @@ data ParsingErrors s = PEs { errorLog   :: ParseLog s
                            }
 
 -- | Only shows 'finalError' to avoid cluttering the entire output.
-instance (ParseInput s, Show s, Show (Stream s), Show (Token s)) => Show (ParsingErrors s) where
+instance (TokenStream s, Show s, Show (Stream s), Show (Token s)) => Show (ParsingErrors s) where
   showsPrec d = showsPrec d . finalError
 
-instance (ParseInput s, NFData s, NFData (Stream s), NFData (Token s)) => NFData (ParsingErrors s) where
+instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s)) => NFData (ParsingErrors s) where
   rnf = rnf . completeLog
 
 -- | The complete log of errors from parsing.
