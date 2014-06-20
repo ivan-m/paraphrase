@@ -12,6 +12,8 @@
  -}
 module Text.Paraphrase.Inputs where
 
+import Text.Paraphrase.Pretty
+
 import qualified Data.ByteString            as SB
 import           Data.ByteString.Char8      ()
 import           Data.ByteString.Internal   (w2c)
@@ -23,6 +25,7 @@ import qualified Data.Text                  as ST
 import qualified Data.Text.Lazy             as LT
 import qualified Data.Text.Unsafe           as ST
 import           Data.Word                  (Word8)
+import           Text.PrettyPrint.HughesPJ  (Doc)
 
 import Control.Arrow   ((***))
 import Control.DeepSeq (NFData)
@@ -42,7 +45,8 @@ import Data.IsNull
 --
 --   This class is separated from 'ParseInput' so as to be able to
 --   provide a minimum requirement for some definitions.
-class TokenStream s where
+class (PrettyValue s, PrettyValue (Stream s), PrettyValue (Token s))
+      => TokenStream s where
 
   -- | The actual input stream.  In many cases @Stream s ~ s@
   --   (especially for base values to be parsed); if this is the case
@@ -113,10 +117,10 @@ isEmpty = isNull . getStream
 -- -----------------------------------------------------------------------------
 -- Instances for various concrete types.
 
-instance TokenStream [a] where
+instance (PrettyValue a) => TokenStream [a] where
   type Token [a] = a
 
-instance ParseInput [a] where
+instance (PrettyValue a) => ParseInput [a] where
 
   inputHead = head
   {-# INLINE inputHead #-}
@@ -206,6 +210,12 @@ instance ParseInput LT.Text where
   breakWhen = LT.span
   {-# INLINE breakWhen #-}
 
+-- | This instance is used to serialise existing inputs for error
+--   messages when (potentially) changing input type.  As such there
+--   is no corresponding 'ParseInput' instance as well.
+instance TokenStream Doc where
+  type Token Doc = Doc
+
 -- -----------------------------------------------------------------------------
 -- How to treat Word8-based types as if they contained Char values.
 
@@ -240,6 +250,9 @@ instance Word8Input SB.ByteString where
 
 instance Word8Input LB.ByteString where
   toWord8List = concatMap SB.unpack . LB.toChunks
+
+instance (Word8Input s) => PrettyValue (AsChar8 s) where
+  prettyValue = prettyValue . map w2c . toWord8List . unChar8
 
 instance (Word8Input s) => TokenStream (AsChar8 s) where
   type Stream (AsChar8 s) = AsChar8 s

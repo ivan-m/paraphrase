@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts #-}
 {- |
    Module      : Text.Paraphrase
    Description : Experimental polyparse reimplementation
@@ -39,7 +39,6 @@ module Text.Paraphrase
        , reparse
          -- ** Commitment
        , commit
-       , failBad
          -- ** Sequences
        , manySatisfy
        , someSatisfy
@@ -58,6 +57,7 @@ module Text.Paraphrase
        , ParseError (..)
        , ParsingErrors
        , failWith
+       , failBadWith
        , finalError
        , completeLog
        , prettyLog
@@ -95,11 +95,11 @@ commit :: (ParseInput s) => Parser s a -> Parser s a
 commit = addStackTrace Committed . commitNoLog
 {-# INLINE commit #-}
 
--- | A combination of 'fail' and 'commit': specify a failure that
+-- | A combination of 'failWith' and 'commit': specify a failure that
 --   cannot be recovered from.
-failBad :: (ParseInput s) => String -> Parser s a
-failBad = commit . fail
-{-# INLINE failBad #-}
+failBadWith :: (ParseInput s) => ParseError s -> Parser s a
+failBadWith = commit . failWith
+{-# INLINE failBadWith #-}
 
 -- -----------------------------------------------------------------------------
 -- Combinators
@@ -143,7 +143,7 @@ token t = satisfyWith (ExpectedButFound t) (t==)
 
 -- | Return the result of the first parser in the list that succeeds.
 oneOf :: (ParseInput s) => [Parser s a] -> Parser s a
-oneOf = foldr (<|>) (fail "Failed to parse any of the possible choices")
+oneOf = foldr (<|>) (failWith NoParserSatisfied)
 {-# INLINE oneOf #-}
 
 -- | Parse as many tokens that satisfy the predicate as possible.
@@ -166,10 +166,14 @@ manySatisfy f = go
 --   require at least one.  This is a more efficient (and possibly
 --   fused) version of @'some' ('satisfy' p)@.
 someSatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser s (Stream s)
-someSatisfy f = do r <- manySatisfy f
-                   if isNull r
-                      then fail "someSatisfy: failed"
-                      else return r
+someSatisfy f = addStackTrace PredicateNotSatisfied
+                ( do r <- manySatisfy f
+                     if isNull r
+                        then next >>= failWith . UnexpectedToken
+                             -- This will also take care of empty input
+                             -- case.
+                        else pure r
+                ) <?> "someSatisfy"
 {-# INLINE someSatisfy #-}
 
 -- | Push some tokens back onto the front of the input stream ready
@@ -193,8 +197,8 @@ sepBy p sep = sepBy1 p sep <|> pure []
 
 -- | Parse a non-empty list of items separated by discarded junk.
 sepBy1 :: (ParseInput s) => Parser s a -> Parser s sep -> Parser s [a]
-sepBy1 p sep = addStackTrace "When looking for a non-empty sequence with separators:"
-               $ liftA2 (:) p (many (sep *> p))
+sepBy1 p sep = addStackTrace PredicateNotSatisfied
+               (liftA2 (:) p (many (sep *> p))) <?> "sepBy1"
 {-# INLINE sepBy1 #-}
 
 -- | Parse a bracketed item, discarding the brackets.
@@ -207,8 +211,8 @@ sepBy1 p sep = addStackTrace "When looking for a non-empty sequence with separat
 bracket :: (ParseInput s) => Parser s bra -> Parser s ket -> Parser s a -> Parser s a
 bracket open close p = open' *> p <* close'
   where
-    open'  = addStackTrace "Missing opening bracket:" open
-    close' = addStackTrace "Missing closing bracket:" close
+    open'  = addStackTrace (MissingBracket OpenBracket)  open
+    close' = addStackTrace (MissingBracket CloseBracket) close
 {-# INLINE bracket #-}
 
 -- | Parse a (possibly empty) list of items, discarding the start, end
@@ -218,9 +222,15 @@ bracket open close p = open' *> p <* close'
 --   be difficult to track down errors.
 bracketSep :: (ParseInput s) => Parser s bra -> Parser s sep -> Parser s ket
               -> Parser s a -> Parser s [a]
-bracketSep open sep close p = addStackTrace "Bracketed list of separated items:"
-                              $ bracket open (commit close) (sepBy p sep)
--- Original polyparse implementation differs.
+bracketSep open sep close p =
+  ((addStackTrace (MissingBracket OpenBracket) open) *>
+    ( (close' *> pure [])
+      <|>
+      (liftA2 (:) p (manyFinally (sep *> p) (commit close')))
+    )
+  ) <?> "bracketSep"
+  where
+    close' = addStackTrace (MissingBracket CloseBracket) close
 {-# INLINE bracketSep #-}
 
 -- | @manyFinally e z@ parses a possibly-empty sequence of @e@'s,
@@ -228,12 +238,12 @@ bracketSep open sep close p = addStackTrace "Bracketed list of separated items:"
 --   could be due to either of these parsers not succeeding, both
 --   possible errors are raised.
 manyFinally :: (ParseInput s) => Parser s a -> Parser s z -> Parser s [a]
-manyFinally p t = addStackTrace "In a list of items with a terminator:"
+manyFinally p t = addStackTrace ListWithTerminator
                   ( many p
                     -- If t succeeds, then it will do so here.
                     -- Otherwise, better error reporting!
-                    <* oneOf' [ ("sequence terminator",t *> pure ())
-                              , ("item in a sequence", p *> pure ())
+                    <* oneOf' [ ("item in a sequence", p *> pure ())
+                              , ("sequence terminator",t *> pure ())
                               ])
 {-# INLINE manyFinally #-}
 
@@ -245,7 +255,7 @@ manyFinally p t = addStackTrace "In a list of items with a terminator:"
 --   If there's no risk of overlap between the two parsers, you should
 --   probably use 'manyFinally'.
 manyFinally' :: (ParseInput s) => Parser s a -> Parser s z -> Parser s [a]
-manyFinally' p t = addStackTrace "In a list of items with a terminator:" go
+manyFinally' p t = addStackTrace ListWithTerminator go
   where
     go =     (t *> pure [])
          <|> liftA2 (:) (p <|> errCheck) go
@@ -310,9 +320,9 @@ chainParsers pb pa
               -- use runParser.
               case fst $ runParser pb' (getStream inpB) of
                 Right a  -> sc pStA' a
-                Left plb -> fl pStA' (Message "Failure running chained parser") -- SubLog plb
+                Left plb -> fl pStA' (SubLog . streamToDoc . completeLog $ plb)
   where
-    pb' = addStackTrace "Running chained parser:" pb
+    pb' = addStackTrace ChainedParser pb
 {-# INLINE chainParsers #-}
 
 -- -----------------------------------------------------------------------------
@@ -320,44 +330,35 @@ chainParsers pb pa
 
 {- $stacktraces
 
-For adding informative error messages to your parsers, whilst it is
-possible to use the lower-level combinators listed below, it is highly
-recommended that you just use the combinators listed here.
+It is highly recommended that you take advantage of these functions to
+add more informative error messages to your parsers.
 
-These provide a more convenient \"wrapper\" ability to add onto your
-parsers, and also provide some basic pretty-printing to make it easier
-to follow the trail of errors.
+With the use of 'prettyLog' and 'prettyDetailedLog' a pretty-printed
+stack trace of error messages will be printed to help you determine
+what went wrong.
 
-These combinators are already used in some of the combinators defined
-in this library.
+Alternatively, by use of 'completeLog' you can obtain the entire
+type-ful list of error messages (tagged with the current input at that
+point in time) and be able to navigate through them in ghci to help
+you determine where the actual error occurred.
+
+These functions are already used in most of the combinators defined in
+this library.
 
 Note that functions such as 'failMessage' will /not/ work when applied
-to a 'commit'ted combinator.
+to a 'commit'ted combinator, as they rely upon backtracking (which
+commit prohibits).
 
 -}
 
--- | Name the parser, as a shorter variant of specifying a longer
---   error message.
-(<?>) :: Parser s a -> String -> Parser s a
-p <?> f = addStackTrace (ParserName f) p
-{-# INLINE (<?>) #-}
-infix 0 <?>
-
 -- | A convenient combinator to specify what the error message of a
 --   combinator should be.
-failMessage :: (ParseInput s) => String -> Parser s a -> Parser s a
-failMessage e = (`onFail` fail e)
+failMessage :: (ParseInput s) => ParseError s -> Parser s a -> Parser s a
+failMessage e = (`onFail` failWith e)
 {-# INLINE failMessage #-}
 
--- | A convenient function to produce (reasonably) pretty stack traces
---   for parsing failures.
-addStackTrace :: ParseError s -> Parser s a -> Parser s a
-addStackTrace e p = P $ \ pSt fl sc ->
-  runP p (pSt { errLog = logError (errLog pSt) e (input pSt) }) fl sc
-{-# INLINE addStackTrace #-}
-
 -- | As with 'addStackTrace' but raise the severity of the error (same
---   relationship as between 'failBad' and 'fail').
+--   relationship as between 'failBadWith' and 'failWith').
 addStackTraceBad :: (ParseInput s) => ParseError s -> Parser s a -> Parser s a
 addStackTraceBad e = addStackTrace e . commit
 {-# INLINE addStackTraceBad #-}
@@ -374,13 +375,8 @@ addStackTraceBad e = addStackTrace e . commit
 --
 --   * Otherwise, return all error messages.
 oneOf' :: (ParseInput s) => [(String,Parser s a)] -> Parser s a
-oneOf' = withoutLog . go id
+oneOf' = go id
   where
-    withoutLog p = P $ \ pSt fl sc ->
-                     let fl' pSt' = fl (pSt' { errLog = errLog pSt <> errLog pSt' })
-                         sc' pSt' = sc (pSt' { errLog = errLog pSt })
-                     in runP p (pSt { errLog = mempty }) fl' sc'
-
     go errs [] = failWith (NamedSubLogs (errs []))
 
     -- Can't use <|> here as we want access to `e'.  Otherwise this is
@@ -398,9 +394,11 @@ oneOf' = withoutLog . go id
 
           sc' pSt' = sc (restoreAdd pSt')
 
-          -- Put back in the original additional input.
-          restoreAdd pSt' = pSt' { add = add pSt <> add pSt'}
+          -- Put back in the original additional input and error log.
+          restoreAdd pSt' = pSt' { add    = add    pSt <> add    pSt'
+                                 , errLog = errLog pSt <> errLog pSt'
+                                 }
 
       in ignoreAdditional pSt $ \ pSt' -> runP p pSt' fl' sc'
-           -- Note: we only consider the AdjErr from the provided
-           -- parser, not the global one.
+         -- We want to be able to differentiate the additional values
+         -- that we already have vs any we may get from running @p@.

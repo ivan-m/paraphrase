@@ -253,6 +253,20 @@ failWith :: ParseError s -> Parser s a
 failWith e = P $ \ pSt fl _sc -> fl pSt e
 {-# INLINE failWith #-}
 
+-- | A convenient function to produce (reasonably) pretty stack traces
+--   for parsing failures.
+addStackTrace :: ParseError s -> Parser s a -> Parser s a
+addStackTrace e p = P $ \ pSt fl sc ->
+  runP p (pSt { errLog = logError (errLog pSt) e (input pSt) }) fl sc
+{-# INLINE addStackTrace #-}
+
+-- | Name the parser, as a shorter variant of specifying a longer
+--   error message.
+(<?>) :: Parser s a -> String -> Parser s a
+p <?> f = addStackTrace (ParserName f) p
+{-# INLINE (<?>) #-}
+infix 0 <?>
+
 -- -----------------------------------------------------------------------------
 -- Instances
 
@@ -315,14 +329,14 @@ instance (ParseInput s) => Alternative (Parser s) where
   (<|>) = onFail
   {-# INLINE (<|>) #-}
 
-  many v = many_v
+  many v = many_v <?> "many"
     where
       many_v = some_v <|> pure []
       some_v = do a <- v
                   commitNoLog ((a:) <$> many_v)
   {-# INLINE many #-}
 
-  some v = some_v
+  some v = some_v <?> "some"
     where
       many_v = some_v <|> pure []
       some_v = do a <- v
@@ -333,8 +347,10 @@ onFail :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
 onFail p1 p2 = wrapCommitment $ P $ \ pSt fl sc ->
   let fl' pSt' e
           | isCommitted pSt' = failure (restoreAdd pSt') e
-          | otherwise        = mergeIncremental pSt pSt' $
-                                 \ pSt'' -> runP p2 pSt'' fl sc
+          | otherwise        = let lg = completeLog $ createLogFrom pSt' e
+                                   p2' = addStackTrace (Backtrack lg) p2
+                               in mergeIncremental pSt pSt' $
+                                    \ pSt'' -> runP p2' pSt'' fl sc
       -- If we fail - and aren't committed - run parser
       -- p2 instead.  We need to ensure that if p1
       -- requested and obtained additional input that we
@@ -342,8 +358,10 @@ onFail p1 p2 = wrapCommitment $ P $ \ pSt fl sc ->
 
       sc' pSt' = sc (restoreAdd pSt')
 
-      -- Put back in the original additional input.
-      restoreAdd pSt' = pSt' { add = add pSt <> add pSt'}
+      -- Put back in the original additional input and error log.
+      restoreAdd pSt' = pSt' { add    = add    pSt <> add    pSt'
+                             , errLog = errLog pSt <> errLog pSt'
+                             }
 
   in ignoreAdditional pSt $ \ pSt'
        -> runP p1 pSt' fl' sc'
@@ -443,8 +461,8 @@ mergeIncremental pSt1 pSt2 f =
   in f pSt
 {-# INLINE mergeIncremental #-}
 
--- A wrapper to set the additional input to be empty as we want to
--- know solely what input _this_ parser obtains.
+-- A wrapper to set the additional input and error log to be empty as
+-- we want to know solely what input and errors _this_ parser obtains.
 ignoreAdditional :: (ParseInput s) => ParseState s -> (ParseState s -> r) -> r
-ignoreAdditional pSt f = f (pSt { add = mempty })
+ignoreAdditional pSt f = f (pSt { add = mempty, errLog = mempty })
 {-# INLINE ignoreAdditional #-}
