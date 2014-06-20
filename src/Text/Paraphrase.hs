@@ -389,7 +389,7 @@ oneOf' = go id
               | isCommitted pSt' = failure (restoreAdd pSt') e
               | otherwise        = mergeIncremental pSt pSt' $
                                      \ pSt'' ->
-                                       runP (go' . completeLog $ createLogFrom pSt'' e)
+                                       runP (go' . completeLog $ createLogFrom pSt' e)
                                          pSt'' fl sc
 
           sc' pSt' = sc (restoreAdd pSt')
