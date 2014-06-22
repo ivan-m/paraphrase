@@ -61,6 +61,7 @@ module Text.Paraphrase
        , finalError
        , completeLog
        , prettyLog
+       , prettyDetailedLog
          -- ** Convenience functions
          -- $stacktraces
        , (<?>)
