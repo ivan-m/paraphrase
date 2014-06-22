@@ -303,9 +303,6 @@ ignFirstP pa pb = P $ \ pSt fl sc ->
                           -> runP pb pSt' fl sc
 {-# INLINE ignFirstP #-}
 
--- Commit isn't propagated here... and it really should be.
--- Dammit, how can we do this?
-
 discard :: Parser s a -> Parser s b -> Parser s a
 discard pa pb = P $ \ pSt fl sc ->
                   let sc' a pSt' b = b `seq` sc pSt' a
