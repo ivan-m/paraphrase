@@ -318,7 +318,7 @@ addErrOnFailure e p = P $ \ pSt fl sc ->
 -- | Name the parser, as a shorter variant of specifying a longer
 --   error message.
 (<?>) :: Parser s a -> String -> Parser s a
-p <?> f = addStackTrace (ParserName f) p
+p <?> f = addErrOnFailure (ParserName f) p
 {-# INLINE (<?>) #-}
 infix 0 <?>
 
@@ -403,7 +403,7 @@ onFailW p1 p2 = wrapCommitment (p1 `onFail` p2)
 onFail :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
 onFail p1 p2 = onFailWith p1Fl p1
   where
-    p1Fl el = addStackTrace (Backtrack el) p2
+    p1Fl el = addErrOnFailure (Backtrack el) p2
 {-# INLINE onFail #-}
 
 onFailWith :: (ParseInput s)

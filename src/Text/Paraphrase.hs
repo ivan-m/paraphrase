@@ -215,8 +215,8 @@ sepBy1 p sep = addStackTrace PredicateNotSatisfied
 bracket :: (ParseInput s) => Parser s bra -> Parser s ket -> Parser s a -> Parser s a
 bracket open close p = open' *> p <* close'
   where
-    open'  = addStackTrace (MissingBracket OpenBracket)  open
-    close' = addStackTrace (MissingBracket CloseBracket) close
+    open'  = addErrOnFailure (MissingBracket OpenBracket)  open
+    close' = addErrOnFailure (MissingBracket CloseBracket) close
 {-# INLINE bracket #-}
 
 -- | Parse a (possibly empty) list of items, discarding the start, end
@@ -234,7 +234,7 @@ bracketSep open sep close p =
     )
   ) <?> "bracketSep"
   where
-    close' = addStackTrace (MissingBracket CloseBracket) close
+    close' = addErrOnFailure (MissingBracket CloseBracket) close
 {-# INLINE bracketSep #-}
 
 -- | @manyFinally e z@ parses a possibly-empty sequence of @e@'s,
