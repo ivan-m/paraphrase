@@ -21,4 +21,4 @@ isParserCommitted = P $ \ pSt _fl sc -> sc pSt (isCommitted pSt)
 
 getCurrentLog :: Parser s (ParsingErrors s)
 getCurrentLog = P $ \ pSt _fl sc ->
-  sc pSt (createFinalLog (errLog pSt) LogRequested (input pSt))
+  sc pSt (createFinalLog (mergedLog pSt) LogRequested (input pSt))

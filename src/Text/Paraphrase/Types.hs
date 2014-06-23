@@ -15,8 +15,10 @@ module Text.Paraphrase.Types where
 
 import Text.Paraphrase.Errors
 import Text.Paraphrase.Inputs (ParseInput (..), TokenStream (..))
+import Text.Paraphrase.Stack
 
 import Control.Applicative
+import Control.Arrow       (second)
 import Control.DeepSeq     (NFData (rnf))
 import Control.Monad       (MonadPlus (..))
 import Data.Monoid
@@ -172,7 +174,7 @@ data ParseState s = PSt { input       :: !s
                           --   received since we started parsing; used
                           --   by onFail.
                         , more        :: !More
-                        , errLog      :: ParseLog s
+                        , errLog      :: Stack (ParseLog s)
                         , isCommitted :: !Bool
                         }
 
@@ -209,7 +211,7 @@ failure pSt e = Failure (input pSt) (createLogFrom pSt e)
 {-# INLINE failure #-}
 
 createLogFrom :: ParseState s -> ParseError s -> ParsingErrors s
-createLogFrom pSt e = createFinalLog (errLog pSt) e (input pSt)
+createLogFrom pSt e = createFinalLog (mergedLog pSt) e (input pSt)
 {-# INLINE createLogFrom #-}
 
 -- Hooray!  We're all done here, and a job well done!
@@ -247,6 +249,9 @@ runParser' p inp = case fst $ runParser p inp of
 -- -----------------------------------------------------------------------------
 -- Error Handling
 
+mergedLog :: ParseState s -> ParseLog s
+mergedLog = mergeStack . errLog
+{-# INLINE mergedLog #-}
 -- | Fail with a specific error.  When @OverloadedStrings@ is enabled,
 --   this becomes equivalent to 'fail' (at least for literal 'String's).
 failWith :: ParseError s -> Parser s a
@@ -257,7 +262,7 @@ failWith e = P $ \ pSt fl _sc -> fl pSt e
 --   for parsing failures.
 addStackTrace :: ParseError s -> Parser s a -> Parser s a
 addStackTrace e p = P $ \ pSt fl sc ->
-  runP p (pSt { errLog = logError (errLog pSt) e (input pSt) }) fl sc
+  runP p (pSt { errLog = withTop (\ el -> logError el e (input pSt)) (errLog pSt) }) fl sc
 {-# INLINE addStackTrace #-}
 
 -- | Name the parser, as a shorter variant of specifying a longer

@@ -80,4 +80,4 @@ requestInput pSt fl sc = Partial partialLog $ \ s ->
      then fl (pSt { more = Complete })
      else sc (pSt { input = input pSt `appendStream` s, add = add pSt <> s })
   where
-    partialLog = createFinalLog (errLog pSt) AwaitingInput (input pSt)
+    partialLog = createFinalLog (mergedLog pSt) AwaitingInput (input pSt)
