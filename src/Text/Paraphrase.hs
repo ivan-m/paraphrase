@@ -82,7 +82,6 @@ import Text.Paraphrase.Types
 
 import Control.Applicative
 import Data.IsNull         (isNull)
-import Data.Monoid
 
 -- -----------------------------------------------------------------------------
 -- Commitment
@@ -144,8 +143,11 @@ token t = satisfyWith (ExpectedButFound t) (t==)
 
 -- | Return the result of the first parser in the list that succeeds.
 oneOf :: (ParseInput s) => [Parser s a] -> Parser s a
-oneOf = foldr (<|>) (failWith NoParserSatisfied)
+oneOf = wrapCommitment . foldr onFail (failWith NoParserSatisfied)
 {-# INLINE oneOf #-}
+-- Safe to wrap commitment only on the outside: if /one/ of them ends
+-- up being committed, then we shouldn't be able to backtrack to the
+-- next one anyway.  We only care about outside commitment.
 
 -- | Parse as many tokens that satisfy the predicate as possible.
 --   This is a more efficient (and possibly fused) version of @'many'
@@ -376,30 +378,12 @@ addStackTraceBad e = addStackTrace e . commit
 --
 --   * Otherwise, return all error messages.
 oneOf' :: (ParseInput s) => [(String,Parser s a)] -> Parser s a
-oneOf' = go id
+oneOf' = wrapCommitment . go id
   where
     go errs [] = failWith (NamedSubLogs (errs []))
 
     -- Can't use <|> here as we want access to `e'.  Otherwise this is
     -- pretty much a duplicate of onFail.
-    go errs ((nm,p):ps) = wrapCommitment $ P $ \ pSt fl sc ->
+    go errs ((nm,p):ps) =
       let go' e = go (errs . ((nm,e):)) ps
-          -- When we fail (and the parser isn't committed), recurse
-          -- and try the next parser whilst saving the error message.
-          fl' pSt' e
-              | isCommitted pSt' = failure (restoreAdd pSt') e
-              | otherwise        = mergeIncremental pSt pSt' $
-                                     \ pSt'' ->
-                                       runP (go' . completeLog $ createLogFrom pSt' e)
-                                         pSt'' fl sc
-
-          sc' pSt' = sc (restoreAdd pSt')
-
-          -- Put back in the original additional input and error log.
-          restoreAdd pSt' = pSt' { add    = add    pSt <> add    pSt'
-                                 , errLog = errLog pSt <> errLog pSt'
-                                 }
-
-      in ignoreAdditional pSt $ \ pSt' -> runP p pSt' fl' sc'
-         -- We want to be able to differentiate the additional values
-         -- that we already have vs any we may get from running @p@.
+      in onFailWith go' p

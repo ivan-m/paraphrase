@@ -252,6 +252,32 @@ runParser' p inp = case fst $ runParser p inp of
 mergedLog :: ParseState s -> ParseLog s
 mergedLog = mergeStack . errLog
 {-# INLINE mergedLog #-}
+
+-- A variant of 'runP' where a new ParseLog is created solely for the
+-- provided parser.
+--
+-- If dealing specially with commitment, then the Failure case needs
+-- to make sure to put the values back on the stack.
+runPStacked :: Parser s a
+               -> ( forall r.
+                       ParseState s
+                    -> (ParseLog s -> Failure s   r)
+                    -> (ParseLog s -> Success s a r)
+                    -> Result s r
+                  )
+runPStacked p pSt pfl psc =
+  let withLog pf pSt' = uncurry pf (getLog pSt')
+  in runP p (pSt { errLog = newTop (errLog pSt) }) (withLog pfl) (withLog psc)
+{-# INLINE runPStacked #-}
+
+setErrLog :: Stack (ParseLog s) -> ParseState s -> ParseState s
+setErrLog el pSt = pSt { errLog = el }
+{-# INLINE setErrLog #-}
+
+getLog :: ParseState s -> (ParseLog s, ParseState s)
+getLog pSt = second (`setErrLog` pSt) (pop $ errLog pSt)
+{-# INLINE getLog #-}
+
 -- | Fail with a specific error.  When @OverloadedStrings@ is enabled,
 --   this becomes equivalent to 'fail' (at least for literal 'String's).
 failWith :: ParseError s -> Parser s a
@@ -328,7 +354,7 @@ instance (ParseInput s) => Alternative (Parser s) where
   empty = failP "empty"
   {-# INLINE empty #-}
 
-  (<|>) = onFail
+  (<|>) = onFailW
   {-# INLINE (<|>) #-}
 
   many v = many_v <?> "many"
@@ -345,32 +371,47 @@ instance (ParseInput s) => Alternative (Parser s) where
                   commitNoLog ((a:) <$> many_v)
   {-# INLINE some #-}
 
+-- Variant of onFail that takes care of pre-commitment.
+onFailW :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
+onFailW p1 p2 = wrapCommitment (p1 `onFail` p2)
+{-# INLINE onFailW #-}
+
 onFail :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
-onFail p1 p2 = wrapCommitment $ P $ \ pSt fl sc ->
-  let fl' pSt' e
-          | isCommitted pSt' = failure (restoreAdd pSt') e
-          | otherwise        = let lg = completeLog $ createLogFrom pSt' e
-                                   p2' = addStackTrace (Backtrack lg) p2
-                               in mergeIncremental pSt pSt' $
-                                    \ pSt'' -> runP p2' pSt'' fl sc
-      -- If we fail - and aren't committed - run parser
-      -- p2 instead.  We need to ensure that if p1
-      -- requested and obtained additional input that we
-      -- use it as well.
-
-      sc' pSt' = sc (restoreAdd pSt')
-
-      -- Put back in the original additional input and error log.
-      restoreAdd pSt' = pSt' { add    = add    pSt <> add    pSt'
-                             , errLog = errLog pSt <> errLog pSt'
-                             }
-
-  in ignoreAdditional pSt $ \ pSt'
-       -> runP p1 pSt' fl' sc'
-      -- We want to be able to differentiate the additional values
-      -- that we already have vs any we may get from running @p1@.
+onFail p1 p2 = onFailWith p1Fl p1
+  where
+    p1Fl el = addStackTrace (Backtrack el) p2
 {-# INLINE onFail #-}
 
+onFailWith :: (ParseInput s)
+              => ([TaggedError s] -> Parser s a)
+                 -- ^ Construct the parser for the failure case
+              -> Parser s a -> Parser s a
+onFailWith fp p = P $ \ pSt fl sc ->
+  let toFL pl' pSt' e
+           | isCommitted pSt' = failure (rebaseState pl' pSt') e -- Ideally would deal with previous failures in oneOf'
+           | otherwise        = let el = completeLog $ createFinalLog pl' e (input pSt)
+                                in mergeIncremental pSt pSt' $
+                                     \ pSt'' -> runP (fp el) pSt'' fl sc
+        -- If we fail - and aren't committed - create the specified
+        -- parser and run it instead.  Also ensure that if p1
+        -- requested and obtained additional input that we use it as
+        -- well (in case we backtrack further up).
+
+      toSc pl' pSt' = sc (rebaseState pl' pSt')
+
+      rebaseState pl' pSt' = pSt' { add    = withAdd (add pSt')
+                                  , errLog = withTop (<>pl') (errLog pSt')
+                                  }
+        where
+          -- If committed, we ignore any additional input that came previously.
+          withAdd
+            | isCommitted pSt' = id
+            | otherwise        = (add pSt <>)
+
+  in ignoreAdditional pSt $ \ pSt' -> runPStacked p pSt' toFL toSc
+     -- We want to be able to differentiate the additional values that
+     -- we already have vs any we might get from running @p@.
+{-# INLINE onFailWith #-}
 
 -- Used when you temporarily want to assume that a parser isn't
 -- committed, usually because you want to see if a component makes it
@@ -466,5 +507,5 @@ mergeIncremental pSt1 pSt2 f =
 -- A wrapper to set the additional input and error log to be empty as
 -- we want to know solely what input and errors _this_ parser obtains.
 ignoreAdditional :: (ParseInput s) => ParseState s -> (ParseState s -> r) -> r
-ignoreAdditional pSt f = f (pSt { add = mempty, errLog = mempty })
+ignoreAdditional pSt f = f ( pSt { add = mempty } )
 {-# INLINE ignoreAdditional #-}
