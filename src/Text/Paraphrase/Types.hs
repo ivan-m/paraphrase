@@ -286,10 +286,34 @@ failWith e = P $ \ pSt fl _sc -> fl pSt e
 
 -- | A convenient function to produce (reasonably) pretty stack traces
 --   for parsing failures.
+--
+--   Note that this is useful for \"informational\" messages; if you
+--   want an error to appear only if the parser fails, see
+--   'addErrOnFailure' instead.
 addStackTrace :: ParseError s -> Parser s a -> Parser s a
 addStackTrace e p = P $ \ pSt fl sc ->
-  runP p (pSt { errLog = withTop (\ el -> logError el e (input pSt)) (errLog pSt) }) fl sc
+  runP p (addErr e pSt) fl sc
 {-# INLINE addStackTrace #-}
+
+addErr :: ParseError s -> ParseState s -> ParseState s
+addErr e pSt = setErrLog (addErrMsg e (input pSt) (errLog pSt)) pSt
+{-# INLINE addErr #-}
+
+addErrMsg :: ParseError s -> s -> Stack (ParseLog s) -> Stack (ParseLog s)
+addErrMsg e inp = withTop (\ el -> logError el e inp)
+{-# INLINE addErrMsg #-}
+
+-- | A variant of 'addStackTrace' that only adds the error message if
+--   the parser fails.
+--
+--   This makes a difference in cases like @addErrOnFailure e p1 *>
+--   p2@: if @p1@ succeeds then the error message @e@ won't appear in
+--   the parse log.  This can help avoid cluttering up the log.
+addErrOnFailure :: ParseError s -> Parser s a -> Parser s a
+addErrOnFailure e p = P $ \ pSt fl sc ->
+  let  fl' pl pSt = fl (setErrLog (withTop (<>pl) (errLog pSt)) pSt)
+  in runPStacked (addStackTrace e p) pSt fl' (const sc)
+{-# INLINE addErrOnFailure #-}
 
 -- | Name the parser, as a shorter variant of specifying a longer
 --   error message.

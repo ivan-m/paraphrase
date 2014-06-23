@@ -68,6 +68,7 @@ module Text.Paraphrase
        , failMessage
        , addStackTrace
        , addStackTraceBad
+       , addErrOnFailure
          -- ** Low-level error adjustment
        , oneOf'
 
