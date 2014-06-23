@@ -28,3 +28,7 @@
 
 * A function to do "commit squashing" in error messages so you only
   see the final Committed error that applies.
+
+* Conversion to Doc of chained parsers doesn't take into account
+  whether we want errors to be detailed or not; have a wrapper type
+  that contains both.
