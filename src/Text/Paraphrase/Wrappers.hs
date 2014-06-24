@@ -37,17 +37,6 @@ import Data.Monoid     (Monoid)
 -- | A wrapper to be able to parse 'Word8'-based types
 --   (e.g. 'SB.ByteString') as if they actually contained
 --   Latin1-encoded 'Char' values.
---
---   Note that the 'Stream' is itself rather than the raw type
---   underneath; this is primarily so that when printing error
---   messages the 'Char'-based representation is used rather than the
---   raw bytes.
---
---   As such, you will need to wrap any input (including additional
---   input) with the constructor.
---
---   This type must be applied directly to the actual type for it to
---   work.
 newtype AsChar8 s = AsChar8 { unChar8 :: s }
                     deriving (Eq, Ord, Show, Read, Monoid, NFData, IsNull)
 
