@@ -24,6 +24,7 @@ module Text.Paraphrase
        , resultToEither
        , EitherResult
          -- ** Parser input
+       , TokenStream (..)
        , PrettyInput
        , prettyStream
        , addPrettyInput
