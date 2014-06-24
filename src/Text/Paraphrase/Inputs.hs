@@ -41,7 +41,8 @@ import Data.IsNull
 --   * The input type provided to a parser @s@.
 --
 --   * The underlying values being parsed @Stream s@ (in many cases
---     @Stream s ~ s@).
+--     @Stream s ~ s@; if instead @s@ is a wrapper type then you will
+--     need to define this yourself).
 --
 --   * The individual elements which compose the input, @Token s@.
 --
@@ -119,7 +120,8 @@ instance Eq Doc where
 --   (otherwise you'll get type definition warnings).
 class (TokenStream s, Monoid (Stream s), IsNull (Stream s)) => ParseInput s where
 
-  -- | The current stream stored in this input value.
+  -- | The current stream stored in this input value.  Pre-defined
+  --   when @Stream s ~ s@.
   getStream :: s -> Stream s
   default getStream :: (Stream s ~ s) => s -> s
   getStream = id
@@ -127,6 +129,7 @@ class (TokenStream s, Monoid (Stream s), IsNull (Stream s)) => ParseInput s wher
 
   -- | Create a new input value from the provided stream.  As such, a
   --   blank input value will be equivalent to @fromStream 'mempty'@.
+  --   Pre-defined when @Stream s ~ s@.
   fromStream :: Stream s -> s
   default fromStream :: (Stream s ~ s) => s -> s
   fromStream = id
@@ -160,7 +163,7 @@ class (TokenStream s, Monoid (Stream s), IsNull (Stream s)) => ParseInput s wher
   -- | Split the stream where the predicate is no longer satisfied
   --   (that is, the @fst@ component contains the largest possible
   --   prefix where all values satisfy the predicate, and the @snd@
-  --   component contains the latter).
+  --   component contains the remainder of the input).
   breakWhen :: (Token s -> Bool) -> s -> (Stream s,s)
 
 -- | Is the current state of the input empty?
