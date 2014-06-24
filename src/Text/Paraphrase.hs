@@ -24,6 +24,9 @@ module Text.Paraphrase
        , resultToEither
        , EitherResult
          -- ** Parser input
+       , PrettyInput
+       , prettyStream
+       , addPrettyInput
        , ParseInput (..)
        , AsChar8(..)
        , Word8Input(..)

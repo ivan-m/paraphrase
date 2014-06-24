@@ -25,10 +25,12 @@ import qualified Data.Text                  as ST
 import qualified Data.Text.Lazy             as LT
 import qualified Data.Text.Unsafe           as ST
 import           Data.Word                  (Word8)
-import           Text.PrettyPrint.HughesPJ  (Doc)
+import           Text.PrettyPrint.HughesPJ  (Doc, render)
 
-import Control.Arrow   ((***))
-import Control.DeepSeq (NFData)
+import Control.Applicative (liftA2)
+import Control.Arrow       (second)
+import Control.DeepSeq     (NFData (rnf))
+import Data.Function       (on)
 import Data.Monoid
 import Data.IsNull
 
@@ -45,7 +47,7 @@ import Data.IsNull
 --
 --   This class is separated from 'ParseInput' so as to be able to
 --   provide a minimum requirement for some definitions.
-class (PrettyValue s, PrettyValue (Stream s), PrettyValue (Token s))
+class (PrettyValue (Stream s), PrettyValue (Token s))
       => TokenStream s where
 
   -- | The actual input stream.  In many cases @Stream s ~ s@
@@ -57,12 +59,64 @@ class (PrettyValue s, PrettyValue (Stream s), PrettyValue (Token s))
   -- | The elements of this input type.
   type Token s
 
+  -- | How to pretty-print a value such that it's possible to choose
+  --   whether to print just the 'Stream' or the entire input.
+  --
+  --   When @Stream s ~ s@ this is defined for you (as being just
+  --   'prettyStream'); otherwise, recurse down the stack (optionally
+  --   adding a value with 'addPrettyInput').
+  prettyInput :: s -> PrettyInput
+  default prettyInput :: (Stream s ~ s) => s -> PrettyInput
+  prettyInput = prettyStream
+
+-- | The structured pretty representation of a @TokenStream@ instance.
+data PrettyInput = PI { pInputs :: [(String, Doc)]
+                      , pStream :: !Doc
+                      }
+                   deriving (Eq, Show)
+
+-- | Construct a @PrettyInput@ value when we reach the raw 'Stream'.
+prettyStream :: (TokenStream s, s ~ Stream s) => s -> PrettyInput
+prettyStream s = PI { pInputs = []
+                    , pStream = prettyValue s
+                    }
+
+-- | Optionally use this when we have a wrapper over a raw 'Stream'.
+--   The 'String' argument is used to provide an identifier when
+--   printing error messages.
+addPrettyInput :: (String, Doc) -> PrettyInput -> PrettyInput
+addPrettyInput sd pin = pin { pInputs = sd : pInputs pin }
+
+instance TokenStream PrettyInput where
+  type Stream PrettyInput = Doc
+
+  type Token  PrettyInput = Doc
+
+  prettyInput = id
+
+instance NFData PrettyInput where
+  rnf = liftA2 seq (rnf . pInputs) (rnf . pStream)
+
+-- | Orphan instance needed for 'ParseError's instance.
+instance NFData Doc where
+  rnf = rnf . render
+
+instance Eq Doc where
+  (==) = (==) `on` render
+
+-- -----------------------------------------------------------------------------
+
 -- | The types which we know how to manipulate at a low-level.  This
 --   class defines the minimum that is required to use all parser
 --   combinators.
 --
 --   Unless you're defining a new input source, you probably do not
 --   need to examine the methods of this class.
+--
+--   If you are defining a new wrapper type (i.e. it is /not/ true
+--   that @'Stream' s ~ s@), then make sure you provide definitions
+--   for 'getStream', 'fromStream', 'prependStream' and 'appendStream'
+--   (otherwise you'll get type definition warnings).
 class (TokenStream s, Monoid (Stream s), IsNull (Stream s)) => ParseInput s where
 
   -- | The current stream stored in this input value.
@@ -209,12 +263,6 @@ instance ParseInput LT.Text where
 
   breakWhen = LT.span
   {-# INLINE breakWhen #-}
-
--- | This instance is used to serialise existing inputs for error
---   messages when (potentially) changing input type.  As such there
---   is no corresponding 'ParseInput' instance as well.
-instance TokenStream Doc where
-  type Token Doc = Doc
 
 -- -----------------------------------------------------------------------------
 -- How to treat Word8-based types as if they contained Char values.

@@ -29,7 +29,8 @@ module Text.Paraphrase.Errors
   , LogDetail (..)
   ) where
 
-import Text.Paraphrase.Inputs (ParseInput (..), TokenStream (..))
+import Text.Paraphrase.Inputs (ParseInput (..), PrettyInput (..),
+                               TokenStream (..))
 import Text.Paraphrase.Pretty
 
 import Text.PrettyPrint.HughesPJ hiding (isEmpty, (<>))
@@ -65,7 +66,7 @@ data ParseError s
   | Backtrack [TaggedError s]            -- ^ The log from the left-hand-side of '(<|>)'.
   | NamedSubLogs [(String, [TaggedError s])]
   | ChainedParser
-  | SubLog [TaggedError Doc]             -- ^ The log (if any) from a chained parser.
+  | SubLog [TaggedError PrettyInput]     -- ^ The log (if any) from a chained parser.
   | AwaitingInput                        -- ^ Within a 'Partial' result type.
   | LogRequested                         -- ^ Used with "Text.Paraphrase.Debug".
 
@@ -73,13 +74,6 @@ data ParseError s
 -- also the various language pragmas above.
 deriving instance (TokenStream s, Eq   s, Eq   (Stream s), Eq   (Token s)) => Eq   (ParseError s)
 deriving instance (TokenStream s, Show s, Show (Stream s), Show (Token s)) => Show (ParseError s)
-
--- | Orphan instance needed for 'ParseError's instance.
-instance NFData Doc where
-  rnf = rnf . render
-
-instance Eq Doc where
-  (==) = (==) `on` render
 
 instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s)) => NFData (ParseError s) where
   rnf (ExpectedButFound e f) = rnf e `seq` rnf f
@@ -173,8 +167,8 @@ prettyDetailedLog = render . prettyLogElems ErrorAndCurrentInput . completeLog
 -- These aren't fmap definitions due to the requirement of having
 -- three different functions.
 
-streamToDoc :: (TokenStream s) => [TaggedError s] -> [TaggedError Doc]
-streamToDoc = mapStreamTagged prettyValue prettyValue prettyValue
+streamToDoc :: (TokenStream s) => [TaggedError s] -> [TaggedError PrettyInput]
+streamToDoc = mapStreamTagged prettyInput prettyValue prettyValue
 
 changeStreamError :: (TokenStream s, TokenStream t) => (s -> t) -> (Stream s -> Stream t)
                        -> (Token s -> Token t) -> ParseError s -> ParseError t
@@ -233,7 +227,7 @@ instance (TokenStream s) => PrettyLog (TaggedError s) where
         = case ld of
             OnlyErrors           -> pe
             ErrorAndCurrentInput -> indentLine pe
-                                      (text "Input:" <+> prettyValue el)
+                                      (text "Input:" <+> pStream (prettyInput el))
 
 instance (TokenStream s) => PrettyLog (ParseError s) where
   prettyLogElem _  UnexpectedEndOfInput   = text "Input ended before expected"
