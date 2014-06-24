@@ -21,6 +21,7 @@ import Control.Applicative
 import Control.Arrow       (second)
 import Control.DeepSeq     (NFData (rnf))
 import Control.Monad       (MonadPlus (..))
+import Data.IsNull         (isNull)
 import Data.Monoid
 
 -- -----------------------------------------------------------------------------
@@ -533,3 +534,11 @@ mergeIncremental pSt1 pSt2 f =
 ignoreAdditional :: (ParseInput s) => ParseState s -> (ParseState s -> r) -> r
 ignoreAdditional pSt f = f ( pSt { add = mempty } )
 {-# INLINE ignoreAdditional #-}
+
+-- -----------------------------------------------------------------------------
+-- Utility functions
+
+-- | Is the current state of the input empty?
+isEmpty :: (ParseInput s) => s -> Bool
+isEmpty = isNull . getStream
+{-# INLINE isEmpty #-}

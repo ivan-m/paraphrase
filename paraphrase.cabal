@@ -15,13 +15,14 @@ cabal-version:       >=1.10
 library
   exposed-modules:       Text.Paraphrase
                        , Text.Paraphrase.Debug
+                       , Text.Paraphrase.Inputs
 
   other-modules:         Text.Paraphrase.Additional
                        , Text.Paraphrase.Errors
-                       , Text.Paraphrase.Inputs
                        , Text.Paraphrase.Pretty
                        , Text.Paraphrase.Stack
                        , Text.Paraphrase.Types
+                       , Text.Paraphrase.Wrappers
 
   build-depends:         base >=4.6 && <4.8
                        , deepseq

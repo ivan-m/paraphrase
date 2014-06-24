@@ -24,10 +24,7 @@ module Text.Paraphrase
        , resultToEither
        , EitherResult
          -- ** Parser input
-       , TokenStream (..)
-       , PrettyInput
-       , prettyStream
-       , addPrettyInput
+       , TokenStream (Stream, Token)
        , ParseInput (..)
        , AsChar8(..)
        , Word8Input(..)
@@ -84,6 +81,7 @@ import Text.Paraphrase.Additional
 import Text.Paraphrase.Errors
 import Text.Paraphrase.Inputs
 import Text.Paraphrase.Types
+import Text.Paraphrase.Wrappers
 
 import Control.Applicative
 import Data.IsNull         (isNull)
