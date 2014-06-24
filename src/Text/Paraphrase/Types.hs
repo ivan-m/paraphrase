@@ -311,7 +311,7 @@ addErrMsg e inp = withTop (\ el -> logError el e inp)
 --   the parse log.  This can help avoid cluttering up the log.
 addErrOnFailure :: ParseError s -> Parser s a -> Parser s a
 addErrOnFailure e p = P $ \ pSt fl sc ->
-  let  fl' pl pSt = fl (setErrLog (withTop (<>pl) (errLog pSt)) pSt)
+  let  fl' pl pSt' = fl (setErrLog (withTop (<>pl) (errLog pSt)) pSt')
   in runPStacked (addStackTrace e p) pSt fl' (const sc)
 {-# INLINE addErrOnFailure #-}
 
