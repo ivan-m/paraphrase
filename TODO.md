@@ -89,3 +89,12 @@
 
     - Also benchmark different implementations of various combinators
       (e.g. next)
+
+* Documentation:
+
+    - Update ReadMe, Differences, etc.
+
+    - Ensure internal comments are up-to-date and flesh them out.
+
+    - Add `.Doc.*` "modules" with quick-start guides, comparisons to
+      other parsing libraries, etc.
