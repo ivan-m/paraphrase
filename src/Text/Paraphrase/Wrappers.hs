@@ -20,7 +20,7 @@ import Text.Paraphrase.Inputs
 
 import qualified Data.ByteString            as SB
 import           Data.ByteString.Char8      ()
-import           Data.ByteString.Internal   (w2c)
+import           Data.ByteString.Internal   (c2w, w2c)
 import qualified Data.ByteString.Lazy       as LB
 import           Data.ByteString.Lazy.Char8 ()
 import           Data.String                (IsString (..))
@@ -49,7 +49,7 @@ import Data.Monoid     (Monoid)
 --   This type must be applied directly to the actual type for it to
 --   work.
 newtype AsChar8 s = AsChar8 { unChar8 :: s }
-                    deriving (Eq, Ord, Show, Read, IsString, Monoid, NFData, IsNull)
+                    deriving (Eq, Ord, Show, Read, Monoid, NFData, IsNull)
 
 -- | For values that store 'Word8's.  The constraints are used more to
 --   minimise the required constraints for 'AsChar8' instances than
@@ -57,14 +57,26 @@ newtype AsChar8 s = AsChar8 { unChar8 :: s }
 class (ParseInput s, Token s ~ Word8) => Word8Input s where
   toWord8List :: s -> [Word8]
 
+  fromWord8List :: [Word8] -> s
+
 instance Word8Input [Word8] where
   toWord8List = id
+
+  fromWord8List = id
 
 instance Word8Input SB.ByteString where
   toWord8List = SB.unpack
 
+  fromWord8List = SB.pack
+
 instance Word8Input LB.ByteString where
   toWord8List = LB.unpack
+
+  fromWord8List = LB.pack
+
+-- | Assumes all 'Char's in the provided 'String' are only 8 bits.
+instance (Word8Input s) => IsString (AsChar8 s) where
+  fromString = AsChar8 . fromWord8List . map c2w
 
 instance (Word8Input s) => TokenStream (AsChar8 s) where
   type Stream (AsChar8 s) = Stream s
