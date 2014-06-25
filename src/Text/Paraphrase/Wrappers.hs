@@ -43,7 +43,7 @@ newtype AsChar8 s = AsChar8 { unChar8 :: s }
 -- | For values that store 'Word8's.  The constraints are used more to
 --   minimise the required constraints for 'AsChar8' instances than
 --   because this typeclass needs/assumes them.
-class (ParseInput s, Token s ~ Word8) => Word8Input s where
+class (Show s, ParseInput s, Token s ~ Word8) => Word8Input s where
   toWord8List :: s -> [Word8]
 
   fromWord8List :: [Word8] -> s
@@ -63,6 +63,9 @@ instance Word8Input LB.ByteString where
 
   fromWord8List = LB.pack
 
+instance (Word8Input s) => PrettyValue (AsChar8 s) where
+  prettyValue = prettyValue . map w2c . toWord8List . unChar8
+
 -- | Assumes all 'Char's in the provided 'String' are only 8 bits.
 instance (Word8Input s) => IsString (AsChar8 s) where
   fromString = AsChar8 . fromWord8List . map c2w
@@ -72,10 +75,8 @@ instance (Word8Input s) => TokenStream (AsChar8 s) where
 
   type Token (AsChar8 s) = Char
 
-  prettyInput (AsChar8 s) = addPrettyInput ("Char8 representation", char8)
-                                           (prettyInput s)
-    where
-      char8 = prettyValue . map w2c . toWord8List $ s
+  prettyInput a = addPrettyInput ("Char8 representation", prettyValue a)
+                                 (prettyInput (unChar8 a))
 
 instance (Word8Input s) => ParseInput (AsChar8 s) where
 
