@@ -16,9 +16,9 @@ import Text.Paraphrase.Types
 
 -- -----------------------------------------------------------------------------
 
-isParserCommitted :: Parser s Bool
+isParserCommitted :: Parser e s Bool
 isParserCommitted = P $ \ pSt _fl sc -> sc pSt (isCommitted pSt)
 
-getCurrentLog :: Parser s (ParsingErrors s)
+getCurrentLog :: Parser e s (ParsingErrors e s)
 getCurrentLog = P $ \ pSt _fl sc ->
   sc pSt (createFinalLog (mergedLog pSt) LogRequested (input pSt))

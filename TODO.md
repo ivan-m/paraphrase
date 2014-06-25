@@ -98,3 +98,5 @@
 
     - Add `.Doc.*` "modules" with quick-start guides, comparisons to
       other parsing libraries, etc.
+
+* Is it possible to convert the error type of an actual parser?

@@ -43,6 +43,8 @@ prettyStreamList list = vcat (zipWith (<+>) (lbrack : repeat comma)
 -- -----------------------------------------------------------------------------
 -- Instances
 
+instance PrettyValue ()
+
 instance PrettyValue Char where
   prettyValue = quotes . char
 

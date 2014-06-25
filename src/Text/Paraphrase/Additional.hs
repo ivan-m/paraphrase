@@ -22,7 +22,7 @@ import Data.Monoid
 -- -----------------------------------------------------------------------------
 
 -- | Make sure that there are at least @n@ 'Token's available.
-needAtLeast :: (ParseInput s) => Int -> Parser s ()
+needAtLeast :: (ParseInput s) => Int -> Parser e s ()
 needAtLeast !n = go
   where
     go = P $ \ pSt fl sc ->
@@ -33,7 +33,7 @@ needAtLeast !n = go
 
 -- | As with 'get', but require at least @n@ tokens in the input we
 --   receive.
-getAtLeast :: (ParseInput s) => Int -> Parser s s
+getAtLeast :: (ParseInput s) => Int -> Parser e s s
 getAtLeast !n = P $ \ pSt fl sc ->
      if checkLength n (input pSt)
         then sc pSt (input pSt)
@@ -47,7 +47,8 @@ checkLength !n = (`lengthAtLeast` n)
 
 -- The un-common case is split off to avoid recursion in getAtLeast, so
 -- that it can be inlined properly.
-getAtLeast' :: (ParseInput s) => Int -> ParseState s -> (Failure s   r -> Success s s r -> Result  s   r)
+getAtLeast' :: (ParseInput s) => Int -> ParseState e s
+               -> (Failure e s   r -> Success e s s r -> Result e s   r)
 getAtLeast' !n pSt fl sc = runP (needMoreInput *> go n) pSt fl sc
   where
     go !n' = P $ \ pSt' fl' sc' ->
@@ -56,7 +57,7 @@ getAtLeast' !n pSt fl sc = runP (needMoreInput *> go n) pSt fl sc
          else runP (needMoreInput *> go n') pSt' fl' sc'
 
 -- | Request more input.
-needMoreInput :: (ParseInput s) => Parser s ()
+needMoreInput :: (ParseInput s) => Parser e s ()
 needMoreInput = P $ \ pSt fl sc ->
   if more pSt == Complete
      then fl pSt NoMoreInputExpected
@@ -71,10 +72,10 @@ needMoreInput = P $ \ pSt fl sc ->
 --   It is assumed that if this function is called, then @more pSt ==
 --   Incomplete@.
 requestInput :: (ParseInput s) =>
-               ParseState s
-               -> (ParseState s -> Result s r) -- Failure case
-               -> (ParseState s -> Result s r) -- Success case
-               -> Result s r
+               ParseState e s
+               -> (ParseState e s -> Result e s r) -- Failure case
+               -> (ParseState e s -> Result e s r) -- Success case
+               -> Result e s r
 requestInput pSt fl sc = Partial partialLog $ \ s ->
   if isNull s
      then fl (pSt { more = Complete })

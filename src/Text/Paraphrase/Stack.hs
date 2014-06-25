@@ -27,7 +27,7 @@ import Data.Monoid
 -- -----------------------------------------------------------------------------
 
 newtype Stack a = Stack { unStack :: [a] }
-                  deriving (Eq, Ord, Show, Read, Monoid, IsNull)
+                  deriving (Eq, Ord, Show, Read, Monoid, IsNull, Functor)
 
 push :: a -> Stack a -> Stack a
 push a = Stack . (a:) . unStack

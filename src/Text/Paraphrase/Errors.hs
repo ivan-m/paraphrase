@@ -12,6 +12,7 @@
  -}
 module Text.Paraphrase.Errors
   ( ParseError (..)
+  , MapError (..)
   , BracketType (..)
   , TaggedError
   , parseError
@@ -44,11 +45,16 @@ import           Data.String         (IsString (..))
 
 -- -----------------------------------------------------------------------------
 
+class MapError c where
+  convertErrorBy :: (e -> e') -> c e s -> c e' s
+
+-- -----------------------------------------------------------------------------
+
 -- | The possible errors that could arise when parsing.  Please note
 --   that to an extent, \"errors\" is a bit of a misnomer, as these
 --   are also used for general logging whilst parsing, though these
 --   logs are only provided when an actual error arises.
-data ParseError s
+data ParseError e s
   = UnexpectedEndOfInput
   | NoMoreInputExpected -- ^ When more input requested after being told there isn't any more.
   | ExpectedEndOfInput  -- ^ The parser expected no more input even when more remains.
@@ -63,19 +69,20 @@ data ParseError s
   | ParserName String                    -- ^ Used with '<?>'.
   | Reparse (Stream s)                   -- ^ Additional input added to front.
   | Committed
-  | Backtrack [TaggedError s]            -- ^ The log from the left-hand-side of '(<|>)'.
-  | NamedSubLogs [(String, [TaggedError s])]
+  | Backtrack [TaggedError e s]          -- ^ The log from the left-hand-side of '(<|>)'.
+  | NamedSubLogs [(String, [TaggedError e s])]
   | ChainedParser
-  | SubLog [TaggedError PrettyInput]     -- ^ The log (if any) from a chained parser.
+  | SubLog [TaggedError e PrettyInput]   -- ^ The log (if any) from a chained parser.
   | AwaitingInput                        -- ^ Within a 'Partial' result type.
   | LogRequested                         -- ^ Used with "Text.Paraphrase.Debug".
+  | CustomError e                        -- ^ Able to provide a user-specific error.
 
 -- Need to make these instances separate for GHC to be happy; hence
 -- also the various language pragmas above.
-deriving instance (TokenStream s, Eq   s, Eq   (Stream s), Eq   (Token s)) => Eq   (ParseError s)
-deriving instance (TokenStream s, Show s, Show (Stream s), Show (Token s)) => Show (ParseError s)
+deriving instance (TokenStream s, Eq   s, Eq   (Stream s), Eq   (Token s), Eq   e) => Eq   (ParseError e s)
+deriving instance (TokenStream s, Show s, Show (Stream s), Show (Token s), Show e) => Show (ParseError e s)
 
-instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s)) => NFData (ParseError s) where
+instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s), NFData e) => NFData (ParseError e s) where
   rnf (ExpectedButFound e f) = rnf e `seq` rnf f
   rnf (UnexpectedToken t)    = rnf t
   rnf (MissingItemCount n)   = rnf n
@@ -88,8 +95,31 @@ instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s)) => NFDat
   rnf (SubLog pl)            = rnf pl
   rnf _                      = ()
 
-instance IsString (ParseError s) where
+instance IsString (ParseError e s) where
  fromString = Message
+
+instance MapError ParseError where
+  convertErrorBy _ UnexpectedEndOfInput   = UnexpectedEndOfInput
+  convertErrorBy _ NoMoreInputExpected    = NoMoreInputExpected
+  convertErrorBy _ ExpectedEndOfInput     = ExpectedEndOfInput
+  convertErrorBy _ (ExpectedButFound e f) = ExpectedButFound e f
+  convertErrorBy _ (UnexpectedToken t)    = UnexpectedToken t
+  convertErrorBy _ (MissingItemCount n)   = MissingItemCount n
+  convertErrorBy _ (MissingBracket b)     = MissingBracket b
+  convertErrorBy _ ListWithTerminator     = ListWithTerminator
+  convertErrorBy _ (Message msg)          = Message msg
+  convertErrorBy _ NoParserSatisfied      = NoParserSatisfied
+  convertErrorBy _ PredicateNotSatisfied  = PredicateNotSatisfied
+  convertErrorBy _ (ParserName nm)        = ParserName nm
+  convertErrorBy _ (Reparse s)            = Reparse s
+  convertErrorBy _ Committed              = Committed
+  convertErrorBy f (Backtrack bl)         = Backtrack (map (convertErrorBy f) bl)
+  convertErrorBy f (NamedSubLogs nsls)    = NamedSubLogs (map (second (map $ convertErrorBy f)) nsls)
+  convertErrorBy _ ChainedParser          = ChainedParser
+  convertErrorBy f (SubLog sl)            = SubLog (map (convertErrorBy f) sl)
+  convertErrorBy _ AwaitingInput          = AwaitingInput
+  convertErrorBy _ LogRequested           = LogRequested
+  convertErrorBy f (CustomError e)        = CustomError (f e)
 
 data BracketType = OpenBracket | CloseBracket
                     deriving (Eq, Ord, Show, Read)
@@ -104,61 +134,72 @@ instance PrettyValue BracketType where
 
 -- | A 'ParseError' tagged with the current input at the location of
 --   where it arose.
-data TaggedError s = TE { parseError    :: !(ParseError s)
-                          -- ^ The error that arose.
-                        , errorLocation :: !s
-                          -- ^ The current input when the error arose.
-                        }
+data TaggedError e s = TE { parseError    :: !(ParseError e s)
+                            -- ^ The error that arose.
+                          , errorLocation :: !s
+                            -- ^ The current input when the error arose.
+                          }
 
-deriving instance (TokenStream s, Eq   s, Eq   (Stream s), Eq   (Token s)) => Eq   (TaggedError s)
-deriving instance (TokenStream s, Show s, Show (Stream s), Show (Token s)) => Show (TaggedError s)
+deriving instance (Eq   (ParseError e s), Eq   s) => Eq   (TaggedError e s)
+deriving instance (Show (ParseError e s), Show s) => Show (TaggedError e s)
 
-instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s)) => NFData (TaggedError s) where
+instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s), NFData e) => NFData (TaggedError e s) where
   rnf (TE pe el) = rnf pe `seq` rnf el
 
-newtype ParseLog s = PL { getLog :: DL.DList (TaggedError s) }
+instance MapError TaggedError where
+  convertErrorBy f te = te { parseError = convertErrorBy f (parseError te) }
 
-deriving instance (Eq   (TaggedError s)) => Eq   (ParseLog s)
-deriving instance (Show (TaggedError s)) => Show (ParseLog s)
+newtype ParseLog e s = PL { getLog :: DL.DList (TaggedError e s) }
 
-instance (NFData (TaggedError s)) => NFData (ParseLog s) where
+deriving instance (Eq   (TaggedError e s)) => Eq   (ParseLog e s)
+deriving instance (Show (TaggedError e s)) => Show (ParseLog e s)
+
+instance (NFData (TaggedError e s)) => NFData (ParseLog e s) where
   rnf = rnf . getLog
 
-instance Monoid (ParseLog s) where
+instance Monoid (ParseLog e s) where
   mempty = PL mempty
 
   mappend (PL l1) (PL l2) = PL (l1 <> l2)
 
+instance MapError ParseLog where
+  convertErrorBy f = PL . fmap (convertErrorBy f) . getLog
+
 -- | Add a @ParseError@ to the end of the log.
-logError :: ParseLog s -> ParseError s -> s -> ParseLog s
+logError :: ParseLog e s -> ParseError e s -> s -> ParseLog e s
 logError pl e inp = pl { getLog = getLog pl `DL.snoc` (TE e inp) }
 
-createFinalLog :: ParseLog s -> ParseError s -> s -> ParsingErrors s
+createFinalLog :: ParseLog e s -> ParseError e s -> s -> ParsingErrors e s
 createFinalLog pl e inp = PEs pl (TE e inp)
 
 -- | The log of errors from parsing.
-data ParsingErrors s = PEs { errorLog   :: ParseLog s
-                           -- | The error which caused the parsing to
-                           -- fail.
-                           , finalError :: TaggedError s
-                           }
+data ParsingErrors e s = PEs { errorLog   :: ParseLog e s
+                             -- | The error which caused the parsing to
+                             -- fail.
+                             , finalError :: TaggedError e s
+                             }
 
 -- | Only shows 'finalError' to avoid cluttering the entire output.
-instance (TokenStream s, Show s, Show (Stream s), Show (Token s)) => Show (ParsingErrors s) where
+instance (TokenStream s, Show s, Show (Stream s), Show (Token s), Show e) => Show (ParsingErrors e s) where
   showsPrec d = showsPrec d . finalError
 
-instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s)) => NFData (ParsingErrors s) where
+instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s), NFData e) => NFData (ParsingErrors e s) where
   rnf = rnf . completeLog
 
+instance MapError ParsingErrors where
+  convertErrorBy f pe = PEs { errorLog   = convertErrorBy f (errorLog pe)
+                            , finalError = convertErrorBy f (finalError pe)
+                            }
+
 -- | The complete log of errors from parsing.
-completeLog :: ParsingErrors s -> [TaggedError s]
+completeLog :: ParsingErrors e s -> [TaggedError e s]
 completeLog = DL.toList . liftA2 DL.snoc (getLog . errorLog) finalError
 
 -- | Create a pretty-printed version of the log.
-prettyLog :: (ParseInput s) => ParsingErrors s -> String
+prettyLog :: (ParseInput s, PrettyValue e) => ParsingErrors e s -> String
 prettyLog = render . prettyLogElems OnlyErrors . completeLog
 
-prettyDetailedLog :: (ParseInput s) => ParsingErrors s -> String
+prettyDetailedLog :: (ParseInput s, PrettyValue e) => ParsingErrors e s -> String
 prettyDetailedLog = render . prettyLogElems ErrorAndCurrentInput . completeLog
 
 -- -----------------------------------------------------------------------------
@@ -167,11 +208,11 @@ prettyDetailedLog = render . prettyLogElems ErrorAndCurrentInput . completeLog
 -- These aren't fmap definitions due to the requirement of having
 -- three different functions.
 
-streamToDoc :: (TokenStream s) => [TaggedError s] -> [TaggedError PrettyInput]
+streamToDoc :: (TokenStream s) => [TaggedError e s] -> [TaggedError e PrettyInput]
 streamToDoc = mapStreamTagged prettyInput prettyValue prettyValue
 
 changeStreamError :: (TokenStream s, TokenStream t) => (s -> t) -> (Stream s -> Stream t)
-                       -> (Token s -> Token t) -> ParseError s -> ParseError t
+                       -> (Token s -> Token t) -> ParseError e s -> ParseError e t
 changeStreamError finp fstr ftok err
   = case err of
       UnexpectedEndOfInput  -> UnexpectedEndOfInput
@@ -194,16 +235,17 @@ changeStreamError finp fstr ftok err
       SubLog sl             -> SubLog sl
       AwaitingInput         -> AwaitingInput
       LogRequested          -> LogRequested
+      CustomError e         -> CustomError e
 
 changeStreamTagged :: (TokenStream s, TokenStream t) => (s -> t) -> (Stream s -> Stream t)
-                      -> (Token s -> Token t) -> TaggedError s -> TaggedError t
+                      -> (Token s -> Token t) -> TaggedError e s -> TaggedError e t
 changeStreamTagged finp fstr ftok te
   = TE { parseError    = changeStreamError finp fstr ftok (parseError te)
        , errorLocation = finp (errorLocation te)
        }
 
 mapStreamTagged :: (TokenStream s, TokenStream t) => (s -> t) -> (Stream s -> Stream t)
-                   -> (Token s -> Token t) -> [TaggedError s] -> [TaggedError t]
+                   -> (Token s -> Token t) -> [TaggedError e s] -> [TaggedError e t]
 mapStreamTagged finp fstr ftok = map (changeStreamTagged finp fstr ftok)
 
 -- -----------------------------------------------------------------------------
@@ -220,7 +262,7 @@ data LogDetail = OnlyErrors
 class PrettyLog e where
   prettyLogElem :: LogDetail -> e -> Doc
 
-instance (TokenStream s) => PrettyLog (TaggedError s) where
+instance (TokenStream s, PrettyValue e) => PrettyLog (TaggedError e s) where
   prettyLogElem ld (TE e el) = withInp $ prettyLogElem ld e
     where
       withInp pe
@@ -229,7 +271,7 @@ instance (TokenStream s) => PrettyLog (TaggedError s) where
             ErrorAndCurrentInput -> indentLine pe
                                       (text "Input:" <+> pStream (prettyInput el))
 
-instance (TokenStream s) => PrettyLog (ParseError s) where
+instance (TokenStream s, PrettyValue e) => PrettyLog (ParseError e s) where
   prettyLogElem _  UnexpectedEndOfInput   = text "Input ended before expected"
   prettyLogElem _  NoMoreInputExpected    = text "No more input available"
   prettyLogElem _  ExpectedEndOfInput     = text "Input not yet empty"
@@ -250,6 +292,7 @@ instance (TokenStream s) => PrettyLog (ParseError s) where
   prettyLogElem ld (SubLog sl)            = text "Log from sub-parser:" `indentLine` prettyLogElems ld sl
   prettyLogElem _  AwaitingInput          = text "Awaiting more input"
   prettyLogElem _  LogRequested           = text "End of requested log"
+  prettyLogElem _  (CustomError e)        = prettyValue e
 
 prettyLogElems :: (PrettyLog e) => LogDetail -> [e] -> Doc
 prettyLogElems ld = bulletList . map (prettyLogElem ld)
@@ -260,7 +303,8 @@ indentLine l1 l2 = l1 $+$ nest 2 l2
 bulletList :: [Doc] -> Doc
 bulletList = vcat . map (char '*' <+>)
 
-nmSubLog :: (TokenStream s) => LogDetail -> (String, [TaggedError s]) -> Doc
+nmSubLog :: (TokenStream s, PrettyValue e) => LogDetail
+            -> (String, [TaggedError e s]) -> Doc
 nmSubLog ld (nm,lg) = (text nm  <> colon) `indentLine` prettyLogElems ld lg
 
 -- -----------------------------------------------------------------------------

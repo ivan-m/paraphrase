@@ -15,6 +15,7 @@ module Text.Paraphrase.Types where
 
 import Text.Paraphrase.Errors
 import Text.Paraphrase.Inputs (ParseInput (..), TokenStream (..))
+import Text.Paraphrase.Pretty (PrettyValue)
 import Text.Paraphrase.Stack
 
 import Control.Applicative
@@ -53,18 +54,18 @@ See also the provided conventions for referring to values of type
 --   The @Failure@ case contains the bare error message as well as the
 --   function that will produce any additional error messages (stack
 --   traces, etc.) if so desired.
-data Result s a = Success s a
-                | Failure s (ParsingErrors s)
-                | Partial   (ParsingErrors s) (Stream s -> Result s a)
-                  -- ^ Indicates that the parser requires more input
-                  --   to continue.
-                  --
-                  --   The 'ParseError' is for use with
-                  --   'resultToEither' and can be safely ignored in
-                  --   your own code.
+data Result e s a = Success s a
+                  | Failure s (ParsingErrors e s)
+                  | Partial   (ParsingErrors e s) (Stream s -> Result e s a)
+                    -- ^ Indicates that the parser requires more input
+                    --   to continue.
+                    --
+                    --   The 'ParseError' is for use with
+                    --   'resultToEither' and can be safely ignored in
+                    --   your own code.
 
 -- | Nonsensical for 'Partial'.
-instance (ParseInput s, Show s, Show (Stream s), Show (Token s), Show a) => Show (Result s a) where
+instance (Show e, ParseInput s, Show s, Show (Stream s), Show (Token s), Show a) => Show (Result e s a) where
   showsPrec d r = showParen (d > 10) $
                     case r of
                       Success s a   -> showString "Success "
@@ -80,25 +81,41 @@ instance (ParseInput s, Show s, Show (Stream s), Show (Token s), Show a) => Show
                                        . showString " "
                                        . showString "\"<continuation>\""
 
-instance Functor (Result s) where
+instance Functor (Result e s) where
   fmap f (Success s a)    = Success s (f a)
   fmap _ (Failure s pl)   = Failure s pl
   fmap f (Partial pl cnt) = Partial pl (fmap f . cnt)
 
-instance (ParseInput s, NFData s, NFData (Stream s), NFData (Token s), NFData a) => NFData (Result s a) where
+instance (NFData e, ParseInput s, NFData s, NFData (Stream s), NFData (Token s), NFData a)
+         => NFData (Result e s a) where
   rnf (Success s a)  = rnf s `seq` rnf a
   rnf (Failure s pl) = rnf s `seq` rnf pl
   rnf (Partial pl _) = rnf pl
 
 -- | A convenience alias for use with 'resultToEither' to avoid having
 --   to type the entire type out.
-type EitherResult s a = Either (ParsingErrors s) a
+type EitherResult e s a = Either (ParsingErrors e s) a
 
 -- | Convert the result into an 'Either' value.
-resultToEither :: (ParseInput s) => Result s a -> (EitherResult s a, s)
+resultToEither :: (ParseInput s) => Result e s a -> (EitherResult e s a, s)
 resultToEither (Success s a)     = (Right a, s)
 resultToEither (Failure s pl)    = (Left pl, s)
 resultToEither (Partial pl _cnt) = (Left pl, fromStream mempty)
+
+-- | Change the custom error type.  Useful if you want to chain an
+--   existing parser into your own parser where the error type is
+--   different.
+changeError :: (e -> e') -> Result e s r -> Result e' s r
+changeError _ (Success s  a)   = Success s a
+changeError f (Failure s  pl)  = Failure s (convertErrorBy f pl)
+changeError f (Partial pl cnt) = Partial   (convertErrorBy f pl)
+                                           (changeError f . cnt)
+{-# INLINE changeError #-}
+
+changeErrorE :: (e -> e') -> EitherResult e s a -> EitherResult e' s a
+changeErrorE f (Left pes) = Left (convertErrorBy f pes)
+changeErrorE _ (Right a)  = Right a
+{-# INLINE changeErrorE #-}
 
 -- -----------------------------------------------------------------------------
 -- Parser definition
@@ -111,13 +128,13 @@ resultToEither (Partial pl _cnt) = (Left pl, fromStream mempty)
 --   Use the (otherwise-fraught-with-danger) 'fail' method of the
 --   'Monad' instance to report a parsing failure; alternatively use
 --   the various error-reporting combinators listed below.
-newtype Parser s a = P {
+newtype Parser e s a = P {
   -- Our parser is actually a function of functions!
   runP :: forall r.
-          ParseState s     -- The input and stack trace log.
-          -> Failure s   r -- What to do when we fail.
-          -> Success s a r -- What to do when we succeed.
-          -> Result  s   r
+          ParseState e s     -- The input and stack trace log.
+          -> Failure e s   r -- What to do when we fail.
+          -> Success e s a r -- What to do when we succeed.
+          -> Result  e s   r
   }
 
 {-
@@ -168,19 +185,19 @@ function due to how 'commit' works.
 -- any more input expected.
 --
 -- CONVENTION: a value of this type is called something like @pSt@.
-data ParseState s = PSt { input       :: !s
-                          -- ^ The input we're currently parsing.
-                        , add         ::  Stream s
-                          -- ^ Any additional input we may have
-                          --   received since we started parsing; used
-                          --   by onFail.
-                        , more        :: !More
-                        , errLog      :: Stack (ParseLog s)
-                        , isCommitted :: !Bool
-                        }
+data ParseState e s = PSt { input       :: !s
+                            -- ^ The input we're currently parsing.
+                          , add         ::  Stream s
+                            -- ^ Any additional input we may have
+                            --   received since we started parsing; used
+                            --   by onFail.
+                          , more        :: !More
+                          , errLog      :: Stack (ParseLog e s)
+                          , isCommitted :: !Bool
+                          }
 
-deriving instance (TokenStream s, Eq   s, Eq   (Stream s), Eq   (Token s)) => Eq   (ParseState s)
-deriving instance (TokenStream s, Show s, Show (Stream s), Show (Token s)) => Show (ParseState s)
+deriving instance (TokenStream s, Eq   s, Eq   (Stream s), Eq   (ParseLog e s)) => Eq   (ParseState e s)
+deriving instance (TokenStream s, Show s, Show (Stream s), Show (ParseLog e s)) => Show (ParseState e s)
 
 -- Have we read all available input?
 --
@@ -197,30 +214,30 @@ instance Monoid More where
 -- What to do when we fail a parse; @s@ is the input type.
 --
 -- CONVENTION: a value of this type is called something like @fl@.
-type Failure s   r = ParseState s -> ParseError s -> Result s r
+type Failure e s   r = ParseState e s -> ParseError e s -> Result e s r
 
 -- What to do when a parse is successful; @s@ is the input type, @a@
 -- is the result of the parse, @r@ is the output type.
 --
 -- CONVENTION: a value of this type is called something like @sc@.
-type Success s a r = ParseState s -> a -> Result s r
+type Success e s a r = ParseState e s -> a -> Result e s r
 
 -- Dum... Dum... Dum... DUMMMMMM!!!  The parsing has gone all wrong,
 -- so apply the error-message adjustment and stop doing anything.
-failure :: Failure s r
+failure :: Failure e s r
 failure pSt e = Failure (input pSt) (createLogFrom pSt e)
 {-# INLINE failure #-}
 
-createLogFrom :: ParseState s -> ParseError s -> ParsingErrors s
+createLogFrom :: ParseState e s -> ParseError e s -> ParsingErrors e s
 createLogFrom pSt e = createFinalLog (mergedLog pSt) e (input pSt)
 {-# INLINE createLogFrom #-}
 
 -- Hooray!  We're all done here, and a job well done!
-successful :: Success s a a
+successful :: Success e s a a
 successful pSt = Success (input pSt)
 {-# INLINE successful #-}
 
-makeState :: (ParseInput s) => Stream s -> More -> ParseState s
+makeState :: (ParseInput s) => Stream s -> More -> ParseState e s
 makeState inp m = PSt { input       = fromStream inp
                       , add         = mempty
                       , more        = m
@@ -231,18 +248,18 @@ makeState inp m = PSt { input       = fromStream inp
 
 -- | Run the parser on the provided input, providing the raw 'Result'
 --   value.
-parseInput :: (ParseInput s) => Parser s a -> Stream s -> Result s a
+parseInput :: (ParseInput s) => Parser e s a -> Stream s -> Result e s a
 parseInput p inp = runP p (makeState inp Incomplete) failure successful
 {-# INLINE parseInput #-}
 
 -- | Run a parser.
-runParser :: (ParseInput s) => Parser s a -> Stream s -> (EitherResult s a, s)
+runParser :: (ParseInput s) => Parser e s a -> Stream s -> (EitherResult e s a, s)
 runParser p inp = resultToEither (runP p (makeState inp Complete) failure successful)
 {-# INLINE runParser #-}
 
 -- | Run a parser, assuming it succeeds.  If the parser fails, use
 --   'error' to display the message.
-runParser' :: (ParseInput s) => Parser s a -> Stream s -> a
+runParser' :: (PrettyValue e, ParseInput s) => Parser e s a -> Stream s -> a
 runParser' p inp = case fst $ runParser p inp of
                      Right a -> a
                      Left pl -> error ('\n' : prettyLog pl)
@@ -250,7 +267,7 @@ runParser' p inp = case fst $ runParser p inp of
 -- -----------------------------------------------------------------------------
 -- Error Handling
 
-mergedLog :: ParseState s -> ParseLog s
+mergedLog :: ParseState e s -> ParseLog e s
 mergedLog = mergeStack . errLog
 {-# INLINE mergedLog #-}
 
@@ -259,29 +276,29 @@ mergedLog = mergeStack . errLog
 --
 -- If dealing specially with commitment, then the Failure case needs
 -- to make sure to put the values back on the stack.
-runPStacked :: Parser s a
+runPStacked :: Parser e s a
                -> ( forall r.
-                       ParseState s
-                    -> (ParseLog s -> Failure s   r)
-                    -> (ParseLog s -> Success s a r)
-                    -> Result s r
+                       ParseState e s
+                    -> (ParseLog e s -> Failure e s   r)
+                    -> (ParseLog e s -> Success e s a r)
+                    -> Result e s r
                   )
 runPStacked p pSt pfl psc =
   let withLog pf pSt' = uncurry pf (getLog pSt')
   in runP p (pSt { errLog = newTop (errLog pSt) }) (withLog pfl) (withLog psc)
 {-# INLINE runPStacked #-}
 
-setErrLog :: Stack (ParseLog s) -> ParseState s -> ParseState s
+setErrLog :: Stack (ParseLog e s) -> ParseState e s -> ParseState e s
 setErrLog el pSt = pSt { errLog = el }
 {-# INLINE setErrLog #-}
 
-getLog :: ParseState s -> (ParseLog s, ParseState s)
+getLog :: ParseState e s -> (ParseLog e s, ParseState e s)
 getLog pSt = second (`setErrLog` pSt) (pop $ errLog pSt)
 {-# INLINE getLog #-}
 
 -- | Fail with a specific error.  When @OverloadedStrings@ is enabled,
 --   this becomes equivalent to 'fail' (at least for literal 'String's).
-failWith :: ParseError s -> Parser s a
+failWith :: ParseError e s -> Parser e s a
 failWith e = P $ \ pSt fl _sc -> fl pSt e
 {-# INLINE failWith #-}
 
@@ -291,16 +308,16 @@ failWith e = P $ \ pSt fl _sc -> fl pSt e
 --   Note that this is useful for \"informational\" messages; if you
 --   want an error to appear only if the parser fails, see
 --   'addErrOnFailure' instead.
-addStackTrace :: ParseError s -> Parser s a -> Parser s a
+addStackTrace :: ParseError e s -> Parser e s a -> Parser e s a
 addStackTrace e p = P $ \ pSt fl sc ->
   runP p (addErr e pSt) fl sc
 {-# INLINE addStackTrace #-}
 
-addErr :: ParseError s -> ParseState s -> ParseState s
+addErr :: ParseError e s -> ParseState e s -> ParseState e s
 addErr e pSt = setErrLog (addErrMsg e (input pSt) (errLog pSt)) pSt
 {-# INLINE addErr #-}
 
-addErrMsg :: ParseError s -> s -> Stack (ParseLog s) -> Stack (ParseLog s)
+addErrMsg :: ParseError e s -> s -> Stack (ParseLog e s) -> Stack (ParseLog e s)
 addErrMsg e inp = withTop (\ el -> logError el e inp)
 {-# INLINE addErrMsg #-}
 
@@ -310,7 +327,7 @@ addErrMsg e inp = withTop (\ el -> logError el e inp)
 --   This makes a difference in cases like @addErrOnFailure e p1 *>
 --   p2@: if @p1@ succeeds then the error message @e@ won't appear in
 --   the parse log.  This can help avoid cluttering up the log.
-addErrOnFailure :: ParseError s -> Parser s a -> Parser s a
+addErrOnFailure :: ParseError e s -> Parser e s a -> Parser e s a
 addErrOnFailure e p = P $ \ pSt fl sc ->
   let  fl' pl pSt' = fl (setErrLog (withTop (<>pl) (errLog pSt)) pSt')
   in runPStacked (addStackTrace e p) pSt fl' (const sc)
@@ -318,7 +335,7 @@ addErrOnFailure e p = P $ \ pSt fl sc ->
 
 -- | Name the parser, as a shorter variant of specifying a longer
 --   error message.
-(<?>) :: Parser s a -> String -> Parser s a
+(<?>) :: Parser e s a -> String -> Parser e s a
 p <?> f = addErrOnFailure (ParserName f) p
 {-# INLINE (<?>) #-}
 infix 0 <?>
@@ -326,16 +343,16 @@ infix 0 <?>
 -- -----------------------------------------------------------------------------
 -- Instances
 
-instance Functor (Parser s) where
+instance Functor (Parser e s) where
   fmap = fmapP
   {-# INLINE fmap #-}
 
-fmapP :: (a -> b) -> Parser s a -> Parser s b
+fmapP :: (a -> b) -> Parser e s a -> Parser e s b
 fmapP f pa = P $ \ pSt fl sc ->
                  runP pa pSt fl $ \ pSt' a -> sc pSt' (f a)
 {-# INLINE fmapP #-}
 
-instance Applicative (Parser s) where
+instance Applicative (Parser e s) where
   pure = returnP
   {-# INLINE pure #-}
 
@@ -348,18 +365,18 @@ instance Applicative (Parser s) where
   (<*) = discard
   {-# INLINE (<*) #-}
 
-returnP :: a -> Parser s a
+returnP :: a -> Parser e s a
 returnP a = P $ \ pSt _fl sc -> sc pSt a
 {-# INLINE returnP #-}
 
 -- Explicit version of @pa >>= const pb@.
-ignFirstP :: Parser s a -> Parser s b -> Parser s b
+ignFirstP :: Parser e s a -> Parser e s b -> Parser e s b
 ignFirstP pa pb = P $ \ pSt fl sc ->
                         runP pa pSt fl $ \ pSt' _a
                           -> runP pb pSt' fl sc
 {-# INLINE ignFirstP #-}
 
-discard :: Parser s a -> Parser s b -> Parser s a
+discard :: Parser e s a -> Parser e s b -> Parser e s a
 discard pa pb = P $ \ pSt fl sc ->
                   let sc' a pSt' b = b `seq` sc pSt' a
                       -- Ignore the provided result and use the one
@@ -368,14 +385,14 @@ discard pa pb = P $ \ pSt fl sc ->
                        runP pb pSt' fl (sc' a)
 {-# INLINE discard #-}
 
-apP :: Parser s (a -> b) -> Parser s a -> Parser s b
+apP :: Parser e s (a -> b) -> Parser e s a -> Parser e s b
 apP pf pa = P $ \ pSt fl sc ->
                   runP pf pSt fl $ \ pSt' f ->
                     runP pa pSt' fl $ \ pSt'' a ->
                       sc pSt'' (f a)
 {-# INLINE apP #-}
 
-instance (ParseInput s) => Alternative (Parser s) where
+instance (ParseInput s) => Alternative (Parser e s) where
   empty = failP "empty"
   {-# INLINE empty #-}
 
@@ -397,20 +414,20 @@ instance (ParseInput s) => Alternative (Parser s) where
   {-# INLINE some #-}
 
 -- Variant of onFail that takes care of pre-commitment.
-onFailW :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
+onFailW :: (ParseInput s) => Parser e s a -> Parser e s a -> Parser e s a
 onFailW p1 p2 = wrapCommitment (p1 `onFail` p2)
 {-# INLINE onFailW #-}
 
-onFail :: (ParseInput s) => Parser s a -> Parser s a -> Parser s a
+onFail :: (ParseInput s) => Parser e s a -> Parser e s a -> Parser e s a
 onFail p1 p2 = onFailWith p1Fl p1
   where
     p1Fl el = addErrOnFailure (Backtrack el) p2
 {-# INLINE onFail #-}
 
 onFailWith :: (ParseInput s)
-              => ([TaggedError s] -> Parser s a)
+              => ([TaggedError e s] -> Parser e s a)
                  -- ^ Construct the parser for the failure case
-              -> Parser s a -> Parser s a
+              -> Parser e s a -> Parser e s a
 onFailWith fp p = P $ \ pSt fl sc ->
   let toFL pl' pSt' e
            | isCommitted pSt' = failure (rebaseState pl' pSt') e -- Ideally would deal with previous failures in oneOf'
@@ -441,7 +458,7 @@ onFailWith fp p = P $ \ pSt fl sc ->
 -- Used when you temporarily want to assume that a parser isn't
 -- committed, usually because you want to see if a component makes it
 -- committed.
-wrapCommitment :: Parser s a -> Parser s a
+wrapCommitment :: Parser e s a -> Parser e s a
 wrapCommitment p = P $ \ pSt fl sc ->
   let origCommit = isCommitted pSt
       fl' pSt' = fl (pSt' { isCommitted = origCommit || isCommitted pSt' })
@@ -450,7 +467,7 @@ wrapCommitment p = P $ \ pSt fl sc ->
 {-# INLINE wrapCommitment #-}
 
 
-instance Monad (Parser s) where
+instance Monad (Parser e s) where
   return = returnP
   {-# INLINE return #-}
 
@@ -463,17 +480,17 @@ instance Monad (Parser s) where
   fail = failP
   {-# INLINE fail #-}
 
-failP :: String -> Parser s a
+failP :: String -> Parser e s a
 failP = failWith . Message
 {-# INLINE failP #-}
 
-bindP ::  Parser s a -> (a -> Parser s b) -> Parser s b
+bindP ::  Parser e s a -> (a -> Parser e s b) -> Parser e s b
 bindP p f = P $ \ pSt fl sc -> runP p pSt fl $
                  -- Get the new parser and run it.
                   \ pSt' a -> runP (f a) pSt' fl sc
 {-# INLINE bindP #-}
 
-instance (ParseInput s) => MonadPlus (Parser s) where
+instance (ParseInput s) => MonadPlus (Parser e s) where
   mzero = failP "mzero"
   {-# INLINE mzero #-}
 
@@ -492,7 +509,7 @@ instance (ParseInput s) => MonadPlus (Parser s) where
 -- different branch.  As such, since commit doesn't allow
 -- backtracking, there's no point keeping the additional input around
 -- as it won't get used!.
-commitNoLog :: (ParseInput s) => Parser s a -> Parser s a
+commitNoLog :: (ParseInput s) => Parser e s a -> Parser e s a
 commitNoLog p = P $ \ pSt fl sc ->
   let  pSt' = pSt { add         = mempty
                   , isCommitted = True
@@ -503,11 +520,11 @@ commitNoLog p = P $ \ pSt fl sc ->
 -- -----------------------------------------------------------------------------
 -- Some basic parsers
 
-get :: Parser s s
+get :: Parser e s s
 get = P $ \ pSt _fl sc -> sc pSt (input pSt)
 {-# INLINE get #-}
 
-put :: s -> Parser s ()
+put :: s -> Parser e s ()
 put s = P $ \ pSt _fl sc -> sc (pSt { input = s }) ()
 {-# INLINE put #-}
 
@@ -517,8 +534,8 @@ put s = P $ \ pSt _fl sc -> sc (pSt { input = s }) ()
 -- @mergeIncremental inc1 inc2@ is used when @inc2@ originally started
 -- as having the same 'received' input as @inc1@, but may have since
 -- received additional input.
-mergeIncremental :: (ParseInput s) => ParseState s -> ParseState s
-                    -> (ParseState s -> r) -> r
+mergeIncremental :: (ParseInput s) => ParseState e s -> ParseState e s
+                    -> (ParseState e s -> r) -> r
 mergeIncremental pSt1 pSt2 f =
   let !pSt = pSt1 { input = input pSt1 `appendStream` add  pSt2
                   , add   = add   pSt1 <>             add  pSt2
@@ -531,7 +548,7 @@ mergeIncremental pSt1 pSt2 f =
 
 -- A wrapper to set the additional input and error log to be empty as
 -- we want to know solely what input and errors _this_ parser obtains.
-ignoreAdditional :: (ParseInput s) => ParseState s -> (ParseState s -> r) -> r
+ignoreAdditional :: (ParseInput s) => ParseState e s -> (ParseState e s -> r) -> r
 ignoreAdditional pSt f = f ( pSt { add = mempty } )
 {-# INLINE ignoreAdditional #-}
 
