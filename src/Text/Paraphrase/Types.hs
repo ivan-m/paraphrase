@@ -392,6 +392,9 @@ apP pf pa = P $ \ pSt fl sc ->
                       sc pSt'' (f a)
 {-# INLINE apP #-}
 
+-- | It is /highly/ recommended that you call 'commit' on any parser
+--   after using 'many' or 'some' successfully as you are unable to
+--   backtrack anyway (note that 'many' will /always/ succeed).
 instance (ParseInput s) => Alternative (Parser e s) where
   empty = failP "empty"
   {-# INLINE empty #-}
@@ -402,15 +405,13 @@ instance (ParseInput s) => Alternative (Parser e s) where
   many v = many_v <?> "many"
     where
       many_v = some_v <|> pure []
-      some_v = do a <- v
-                  commitNoLog ((a:) <$> many_v)
+      some_v = liftA2 (:) v many_v
   {-# INLINE many #-}
 
   some v = some_v <?> "some"
     where
       many_v = some_v <|> pure []
-      some_v = do a <- v
-                  commitNoLog ((a:) <$> many_v)
+      some_v = liftA2 (:) v many_v
   {-# INLINE some #-}
 
 -- Variant of onFail that takes care of pre-commitment.
