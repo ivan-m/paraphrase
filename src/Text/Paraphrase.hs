@@ -56,6 +56,8 @@ module Text.Paraphrase
 
          -- * Error reporting
        , ParseError (..)
+       , BracketType (..)
+       , TaggedError (..)
        , PrettyValue (..)
        , ParsingErrors
        , failWith
