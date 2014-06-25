@@ -17,6 +17,8 @@ library
                        , Text.Paraphrase.Debug
                        , Text.Paraphrase.Inputs
 
+                       , Text.Paraphrase.Examples.XML
+
   other-modules:         Text.Paraphrase.Additional
                        , Text.Paraphrase.Errors
                        , Text.Paraphrase.Pretty
