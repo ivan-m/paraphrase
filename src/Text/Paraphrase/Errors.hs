@@ -35,12 +35,12 @@ import Text.Paraphrase.Pretty
 
 import Text.PrettyPrint.HughesPJ hiding (isEmpty, (<>))
 
-import Control.Applicative (liftA2)
-import Control.Arrow       (second)
-import Control.DeepSeq     (NFData (rnf))
-import Data.Function       (on)
-import Data.Monoid
-import Data.String         (IsString (..))
+import           Control.Applicative (liftA2)
+import           Control.Arrow       (second)
+import           Control.DeepSeq     (NFData (rnf))
+import qualified Data.DList          as DL
+import           Data.Monoid
+import           Data.String         (IsString (..))
 
 -- -----------------------------------------------------------------------------
 
@@ -116,22 +116,22 @@ deriving instance (TokenStream s, Show s, Show (Stream s), Show (Token s)) => Sh
 instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s)) => NFData (TaggedError s) where
   rnf (TE pe el) = rnf pe `seq` rnf el
 
-newtype ParseLog s = PL { getLog :: [TaggedError s] -> [TaggedError s]  }
+newtype ParseLog s = PL { getLog :: DL.DList (TaggedError s) }
 
-instance (TokenStream s, Eq s, Eq (Stream s), Eq (Token s)) => Eq (ParseLog s) where
-  (==) = (==) `on` ($[]) . getLog
+deriving instance (Eq   (TaggedError s)) => Eq   (ParseLog s)
+deriving instance (Show (TaggedError s)) => Show (ParseLog s)
 
-instance (TokenStream s, Show s, Show (Stream s), Show (Token s)) => Show (ParseLog s) where
-  showsPrec d = showsPrec d . ($[]) . getLog
+instance (NFData (TaggedError s)) => NFData (ParseLog s) where
+  rnf = rnf . getLog
 
 instance Monoid (ParseLog s) where
-  mempty = PL id
+  mempty = PL mempty
 
-  mappend (PL l1) (PL l2) = PL (l1 . l2)
+  mappend (PL l1) (PL l2) = PL (l1 <> l2)
 
 -- | Add a @ParseError@ to the end of the log.
 logError :: ParseLog s -> ParseError s -> s -> ParseLog s
-logError pl e inp = pl { getLog = getLog pl . ((TE e inp):) }
+logError pl e inp = pl { getLog = getLog pl `DL.snoc` (TE e inp) }
 
 createFinalLog :: ParseLog s -> ParseError s -> s -> ParsingErrors s
 createFinalLog pl e inp = PEs pl (TE e inp)
@@ -152,7 +152,7 @@ instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s)) => NFDat
 
 -- | The complete log of errors from parsing.
 completeLog :: ParsingErrors s -> [TaggedError s]
-completeLog = liftA2 getLog errorLog ((:[]) . finalError)
+completeLog = DL.toList . liftA2 DL.snoc (getLog . errorLog) finalError
 
 -- | Create a pretty-printed version of the log.
 prettyLog :: (ParseInput s) => ParsingErrors s -> String
