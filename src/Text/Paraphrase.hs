@@ -56,6 +56,7 @@ module Text.Paraphrase
 
          -- * Error reporting
        , ParseError (..)
+       , PrettyValue (..)
        , ParsingErrors
        , failWith
        , failBadWith
