@@ -18,13 +18,11 @@ module Text.Paraphrase.Wrappers
 
 import Text.Paraphrase.Inputs
 
-import qualified Data.ByteString            as SB
-import           Data.ByteString.Char8      ()
-import           Data.ByteString.Internal   (c2w, w2c)
-import qualified Data.ByteString.Lazy       as LB
-import           Data.ByteString.Lazy.Char8 ()
-import           Data.String                (IsString (..))
-import           Data.Word                  (Word8)
+import qualified Data.ByteString          as SB
+import           Data.ByteString.Internal (c2w, w2c)
+import qualified Data.ByteString.Lazy     as LB
+import           Data.String              (IsString (..))
+import           Data.Word                (Word8)
 
 import Control.Arrow   (second)
 import Control.DeepSeq (NFData)
