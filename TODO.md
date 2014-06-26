@@ -10,9 +10,6 @@
 
     - Log verbosity?
 
-        + Have Backtrack, etc. store a ParseLog so that only the last
-          error can be displayed.
-
         + Currently only raw inputs are (optionally) displayed; need to
           configure whether to also show any additional information from
           input wrapper types (e.g. Char8-based view when using AsChar8).

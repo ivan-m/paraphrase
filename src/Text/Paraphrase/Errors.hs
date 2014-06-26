@@ -40,6 +40,7 @@ import           Control.Applicative (liftA2)
 import           Control.Arrow       (second)
 import           Control.DeepSeq     (NFData (rnf))
 import qualified Data.DList          as DL
+import           Data.Function       (on)
 import           Data.Monoid
 import           Data.String         (IsString (..))
 
@@ -69,10 +70,10 @@ data ParseError e s
   | ParserName String                    -- ^ Used with '<?>'.
   | Reparse (Stream s)                   -- ^ Additional input added to front.
   | Committed
-  | Backtrack [TaggedError e s]          -- ^ The log from the left-hand-side of '(<|>)'.
-  | NamedSubLogs [(String, [TaggedError e s])]
+  | Backtrack (ParsingErrors e s)        -- ^ The log from the left-hand-side of '\<|\>'.
+  | NamedSubLogs [(String, ParsingErrors e s)]
   | ChainedParser
-  | SubLog [TaggedError e PrettyInput]   -- ^ The log (if any) from a chained parser.
+  | SubLog (ParsingErrors e PrettyInput) -- ^ The log (if any) from a chained parser.
   | AwaitingInput                        -- ^ Within a 'Partial' result type.
   | LogRequested                         -- ^ Used with "Text.Paraphrase.Debug".
   | CustomError e                        -- ^ Able to provide a user-specific error.
@@ -113,10 +114,10 @@ instance MapError ParseError where
   convertErrorBy _ (ParserName nm)        = ParserName nm
   convertErrorBy _ (Reparse s)            = Reparse s
   convertErrorBy _ Committed              = Committed
-  convertErrorBy f (Backtrack bl)         = Backtrack (map (convertErrorBy f) bl)
-  convertErrorBy f (NamedSubLogs nsls)    = NamedSubLogs (map (second (map $ convertErrorBy f)) nsls)
+  convertErrorBy f (Backtrack bl)         = Backtrack (convertErrorBy f bl)
+  convertErrorBy f (NamedSubLogs nsls)    = NamedSubLogs (map (second (convertErrorBy f)) nsls)
   convertErrorBy _ ChainedParser          = ChainedParser
-  convertErrorBy f (SubLog sl)            = SubLog (map (convertErrorBy f) sl)
+  convertErrorBy f (SubLog sl)            = SubLog (convertErrorBy f sl)
   convertErrorBy _ AwaitingInput          = AwaitingInput
   convertErrorBy _ LogRequested           = LogRequested
   convertErrorBy f (CustomError e)        = CustomError (f e)
@@ -179,8 +180,11 @@ data ParsingErrors e s = PEs { errorLog   :: ParseLog e s
                              , finalError :: TaggedError e s
                              }
 
+instance (Eq (TaggedError e s)) => Eq (ParsingErrors e s) where
+  (==) = (==) `on` completeLog
+
 -- | Only shows 'finalError' to avoid cluttering the entire output.
-instance (TokenStream s, Show s, Show (Stream s), Show (Token s), Show e) => Show (ParsingErrors e s) where
+instance (Show (TaggedError e s)) => Show (ParsingErrors e s) where
   showsPrec d = showsPrec d . finalError
 
 instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s), NFData e) => NFData (ParsingErrors e s) where
@@ -208,8 +212,8 @@ prettyDetailedLog = render . prettyLogElems ErrorAndCurrentInput . completeLog
 -- These aren't fmap definitions due to the requirement of having
 -- three different functions.
 
-streamToDoc :: (TokenStream s) => [TaggedError e s] -> [TaggedError e PrettyInput]
-streamToDoc = mapStreamTagged prettyInput prettyValue prettyValue
+streamToDoc :: (TokenStream s) => ParsingErrors e s -> ParsingErrors e PrettyInput
+streamToDoc = changeStreamErrors prettyInput prettyValue prettyValue
 
 changeStreamError :: (TokenStream s, TokenStream t) => (s -> t) -> (Stream s -> Stream t)
                        -> (Token s -> Token t) -> ParseError e s -> ParseError e t
@@ -229,8 +233,8 @@ changeStreamError finp fstr ftok err
       ParserName nm         -> ParserName nm
       Reparse s             -> Reparse (fstr s)
       Committed             -> Committed
-      Backtrack bl          -> Backtrack (mapStreamTagged finp fstr ftok bl)
-      NamedSubLogs nsls     -> NamedSubLogs $ map (second $ mapStreamTagged finp fstr ftok) nsls
+      Backtrack bl          -> Backtrack (changeStreamErrors finp fstr ftok bl)
+      NamedSubLogs nsls     -> NamedSubLogs $ map (second $ changeStreamErrors finp fstr ftok) nsls
       ChainedParser         -> ChainedParser
       SubLog sl             -> SubLog sl
       AwaitingInput         -> AwaitingInput
@@ -244,9 +248,17 @@ changeStreamTagged finp fstr ftok te
        , errorLocation = finp (errorLocation te)
        }
 
-mapStreamTagged :: (TokenStream s, TokenStream t) => (s -> t) -> (Stream s -> Stream t)
-                   -> (Token s -> Token t) -> [TaggedError e s] -> [TaggedError e t]
-mapStreamTagged finp fstr ftok = map (changeStreamTagged finp fstr ftok)
+changeStreamLog :: (TokenStream s, TokenStream t) => (s -> t) -> (Stream s -> Stream t)
+                   -> (Token s -> Token t) -> ParseLog e s -> ParseLog e t
+changeStreamLog finp fstr ftok = PL . fmap (changeStreamTagged finp fstr ftok) . getLog
+
+changeStreamErrors :: (TokenStream s, TokenStream t) => (s -> t) -> (Stream s -> Stream t)
+                      -> (Token s -> Token t) -> ParsingErrors e s -> ParsingErrors e t
+changeStreamErrors finp fstr ftok pe = PEs { errorLog   = changeStreamLog finp fstr ftok
+                                                                          (errorLog pe)
+                                           , finalError = changeStreamTagged finp fstr ftok
+                                                                             (finalError pe)
+                                           }
 
 -- -----------------------------------------------------------------------------
 
@@ -286,13 +298,16 @@ instance (TokenStream s, PrettyValue e) => PrettyLog (ParseError e s) where
   prettyLogElem _  (ParserName f)         = text "In the parser combinator" <+> doubleQuotes (text f)
   prettyLogElem _  (Reparse s)            = text "Adding" <+> prettyValue s <+> text "to the front of the parse input"
   prettyLogElem _  Committed              = text "Parser is now committed; unable to backtrack past this point"
-  prettyLogElem ld (Backtrack bl)         = text "Backtracking due to parse error:" `indentLine` prettyLogElems ld bl
+  prettyLogElem ld (Backtrack bl)         = text "Backtracking due to parse error:" `indentLine` prettyLogElem ld bl
   prettyLogElem ld (NamedSubLogs nl)      = text "Named alternatives:" `indentLine` bulletList (map (nmSubLog ld) nl)
   prettyLogElem _  ChainedParser          = text "Running a chained parser"
-  prettyLogElem ld (SubLog sl)            = text "Log from sub-parser:" `indentLine` prettyLogElems ld sl
+  prettyLogElem ld (SubLog sl)            = text "Log from sub-parser:" `indentLine` prettyLogElem ld sl
   prettyLogElem _  AwaitingInput          = text "Awaiting more input"
   prettyLogElem _  LogRequested           = text "End of requested log"
   prettyLogElem _  (CustomError e)        = prettyValue e
+
+instance (TokenStream s, PrettyValue e) => PrettyLog (ParsingErrors e s) where
+  prettyLogElem ld = prettyLogElems ld . completeLog
 
 prettyLogElems :: (PrettyLog e) => LogDetail -> [e] -> Doc
 prettyLogElems ld = bulletList . map (prettyLogElem ld)
@@ -304,7 +319,7 @@ bulletList :: [Doc] -> Doc
 bulletList = vcat . map (char '*' <+>)
 
 nmSubLog :: (TokenStream s, PrettyValue e) => LogDetail
-            -> (String, [TaggedError e s]) -> Doc
-nmSubLog ld (nm,lg) = (text nm  <> colon) `indentLine` prettyLogElems ld lg
+            -> (String, ParsingErrors e s) -> Doc
+nmSubLog ld (nm,lg) = (text nm  <> colon) `indentLine` prettyLogElem ld lg
 
 -- -----------------------------------------------------------------------------

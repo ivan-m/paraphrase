@@ -426,13 +426,13 @@ onFail p1 p2 = onFailWith p1Fl p1
 {-# INLINE onFail #-}
 
 onFailWith :: (ParseInput s)
-              => ([TaggedError e s] -> Parser e s a)
+              => (ParsingErrors e s -> Parser e s a)
                  -- ^ Construct the parser for the failure case
               -> Parser e s a -> Parser e s a
 onFailWith fp p = P $ \ pSt fl sc ->
   let toFL pl' pSt' e
            | isCommitted pSt' = failure (rebaseState pl' pSt') e -- Ideally would deal with previous failures in oneOf'
-           | otherwise        = let el = completeLog $ createFinalLog pl' e (input pSt)
+           | otherwise        = let el = createFinalLog pl' e (input pSt)
                                 in mergeIncremental pSt pSt' $
                                      \ pSt'' -> runP (fp el) pSt'' fl sc
         -- If we fail - and aren't committed - create the specified

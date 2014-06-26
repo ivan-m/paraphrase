@@ -330,7 +330,7 @@ chainParsers f pb pa
               -- use runParser.
               case changeErrorE f . fst $ runParser pb' (getStream inpB) of
                 Right a  -> sc pStA' a
-                Left plb -> fl pStA' (SubLog . streamToDoc . completeLog $ plb)
+                Left plb -> fl pStA' (SubLog . streamToDoc $ plb)
   where
     pb' = addStackTrace ChainedParser pb
 {-# INLINE chainParsers #-}
