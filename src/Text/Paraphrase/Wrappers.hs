@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving, TypeFamilies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, TypeFamilies #-}
 
 {- |
    Module      : Text.Paraphrase.Wrappers
@@ -46,7 +46,7 @@ class (Show s, ParseInput s, Token s ~ Word8) => Word8Input s where
 
   fromWord8List :: [Word8] -> s
 
-instance Word8Input [Word8] where
+instance (a ~ Word8) => Word8Input [a] where
   toWord8List = id
 
   fromWord8List = id

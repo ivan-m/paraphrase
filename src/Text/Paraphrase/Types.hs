@@ -1,6 +1,5 @@
-{-# LANGUAGE BangPatterns, FlexibleContexts, GeneralizedNewtypeDeriving,
-             OverloadedStrings, RankNTypes, StandaloneDeriving, TypeFamilies,
-             UndecidableInstances #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts, RankNTypes, StandaloneDeriving,
+             TypeFamilies, UndecidableInstances #-}
 {- |
    Module      : Text.Paraphrase.Types
    Description : Definition of types
