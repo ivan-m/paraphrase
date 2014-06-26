@@ -6,8 +6,6 @@
    License     : 3-Clause BSD-style
    Maintainer  : Ivan.Miljenovic@gmail.com
 
-
-
  -}
 module Text.Paraphrase.Additional where
 

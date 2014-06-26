@@ -67,7 +67,7 @@ data ParseError e s
   | Message String                       -- ^ Can be created via the @OverloadedStrings@ pragma.
   | NoParserSatisfied                    -- ^ Used with 'oneOf'.
   | PredicateNotSatisfied                -- ^ Used with combinators like 'sepBy1'.
-  | ParserName String                    -- ^ Used with '<?>'.
+  | ParserName String                    -- ^ Used with '\<?\>'.
   | Reparse (Stream s)                   -- ^ Additional input added to front.
   | Committed
   | Backtrack (ParsingErrors e s)        -- ^ The log from the left-hand-side of '\<|\>'.
