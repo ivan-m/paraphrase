@@ -8,16 +8,6 @@
       improve readability in displays and also memory usage of large
       logs.
 
-    - Log verbosity?
-
-        + Currently only raw inputs are (optionally) displayed; need to
-          configure whether to also show any additional information from
-          input wrapper types (e.g. Char8-based view when using AsChar8).
-
-    - Commit-squashing: only show the last commitment rather than
-      peppering them everywhere (with this, it might be feasible to
-      just have many and some commit all the time).
-
 * Add more inbuilt types to PrettyValue (at the very least all the
   numeric types in the Prelude)
 

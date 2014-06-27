@@ -25,9 +25,8 @@ module Text.Paraphrase.Errors
   , finalError
   , completeLog
   , prettyLog
-  , prettyDetailedLog
-  , PrettyLog (..)
-  , LogDetail (..)
+  , prettyLogWith
+  , LogVerbosity (..)
   ) where
 
 import Text.Paraphrase.Inputs (ParseInput (..), PrettyInput (..),
@@ -37,8 +36,9 @@ import Text.Paraphrase.Pretty
 import Text.PrettyPrint.HughesPJ hiding (isEmpty, (<>))
 
 import           Control.Applicative (liftA2)
-import           Control.Arrow       (second)
+import           Control.Arrow       (second, (&&&), (***))
 import           Control.DeepSeq     (NFData (rnf))
+import           Data.Bool           (bool)
 import qualified Data.DList          as DL
 import           Data.Function       (on)
 import           Data.Monoid
@@ -200,11 +200,22 @@ completeLog :: ParsingErrors e s -> [TaggedError e s]
 completeLog = DL.toList . liftA2 DL.snoc (getLog . errorLog) finalError
 
 -- | Create a pretty-printed version of the log.
+--
+--   This is a version of 'prettyLogWith' with sensible defaults for a
+--   minimal log:
+--
+--   * Multiple 'Committed' errors squashed.
+--
+--   * Inputs and streams not displayed.
+--
+--   * Only the final error from sub-logs is displayed.
 prettyLog :: (ParseInput s, PrettyValue e) => ParsingErrors e s -> String
-prettyLog = render . prettyLogElems OnlyErrors . completeLog
+prettyLog = prettyLogWith defVerbosity
 
-prettyDetailedLog :: (ParseInput s, PrettyValue e) => ParsingErrors e s -> String
-prettyDetailedLog = render . prettyLogElems ErrorAndCurrentInput . completeLog
+-- | Create a customised pretty-printed version of the log.
+prettyLogWith :: (ParseInput s, PrettyValue e)
+                 => LogVerbosity -> ParsingErrors e s -> String
+prettyLogWith lv = render . prettyLogElems lv . completeLog
 
 -- -----------------------------------------------------------------------------
 -- Changing input type.
@@ -262,26 +273,54 @@ changeStreamErrors finp fstr ftok pe = PEs { errorLog   = changeStreamLog finp f
 
 -- -----------------------------------------------------------------------------
 
--- | How much information should be printed in error logs.
-data LogDetail = OnlyErrors
-               | ErrorAndCurrentInput
-               -- ^ Also include the current input at the error
-               --   location.
-               deriving (Eq, Ord, Show, Read)
+-- | Customise how pretty-printed error logs should be displayed.
+data LogVerbosity = LV { -- | Remove all but the last commit message?
+                         squashCommits   :: Bool
+
+                         -- | Should the input stream at each error be
+                         --   displayed?
+                       , displayStreams  :: Bool
+
+                         -- | Should any additional input information
+                         --   also be displayed?  Requires
+                         --   @'displayStreams' = True@.
+                       , displayInputs   :: Bool
+
+                         -- | Should the complete sub-log in errors
+                         --   like 'Backtrack', 'ChainedParser',
+                         --   etc. be displayed rather than just the
+                         --   last error?
+                       , completeSubLogs :: Bool
+                       }
+                  deriving (Eq, Ord, Show, Read)
+
+defVerbosity :: LogVerbosity
+defVerbosity = LV { squashCommits   = True
+                  , displayStreams  = False
+                  , displayInputs   = False
+                  , completeSubLogs = False
+                  }
 
 -- | Internal class to abstract out between 'TaggedError' and
 --   'ParseError' for pretty-printing logs.
 class PrettyLog e where
-  prettyLogElem :: LogDetail -> e -> Doc
+  prettyLogElem :: LogVerbosity -> e -> Doc
 
 instance (TokenStream s, PrettyValue e) => PrettyLog (TaggedError e s) where
-  prettyLogElem ld (TE e el) = withInp $ prettyLogElem ld e
+  prettyLogElem lv (TE e el) = withInp $ prettyLogElem lv e
     where
       withInp pe
-        = case ld of
-            OnlyErrors           -> pe
-            ErrorAndCurrentInput -> indentLine pe
-                                      (text "Input:" <+> pStream (prettyInput el))
+        | not (displayStreams lv) = pe
+        | displayInputs lv        = indentLine pe
+                                               (vcat (map (uncurry prettyPair) inps)
+                                                $+$ prettyStream)
+        | otherwise               = indentLine pe prettyStream
+
+      (inps,str) = (pInputs &&& pStream) (prettyInput el)
+
+      prettyPair nm doc = (text nm <> char ':') <+> doc
+
+      prettyStream = prettyPair "Input" str
 
 instance (TokenStream s, PrettyValue e) => PrettyLog (ParseError e s) where
   prettyLogElem _  UnexpectedEndOfInput   = text "Input ended before expected"
@@ -298,19 +337,23 @@ instance (TokenStream s, PrettyValue e) => PrettyLog (ParseError e s) where
   prettyLogElem _  (ParserName f)         = text "In the parser combinator" <+> doubleQuotes (text f)
   prettyLogElem _  (Reparse s)            = text "Adding" <+> prettyValue s <+> text "to the front of the parse input"
   prettyLogElem _  Committed              = text "Parser is now committed; unable to backtrack past this point"
-  prettyLogElem ld (Backtrack bl)         = text "Backtracking due to parse error:" `indentLine` prettyLogElem ld bl
-  prettyLogElem ld (NamedSubLogs nl)      = text "Named alternatives:" `indentLine` bulletList (map (nmSubLog ld) nl)
+  prettyLogElem lv (Backtrack bl)         = text "Backtracking due to parse error:" `indentLine` prettyLogElem lv bl
+  prettyLogElem lv (NamedSubLogs nl)      = text "Named alternatives:" `indentLine` bulletList (map (nmSubLog lv) nl)
   prettyLogElem _  ChainedParser          = text "Running a chained parser"
-  prettyLogElem ld (SubLog sl)            = text "Log from sub-parser:" `indentLine` prettyLogElem ld sl
+  prettyLogElem lv (SubLog sl)            = text "Log from sub-parser:" `indentLine` prettyLogElem lv sl
   prettyLogElem _  AwaitingInput          = text "Awaiting more input"
   prettyLogElem _  LogRequested           = text "End of requested log"
   prettyLogElem _  (CustomError e)        = prettyValue e
 
-instance (TokenStream s, PrettyValue e) => PrettyLog (ParsingErrors e s) where
-  prettyLogElem ld = prettyLogElems ld . completeLog
+prettyLogElems :: (TokenStream s, PrettyValue e)
+                  => LogVerbosity -> [TaggedError e s] -> Doc
+prettyLogElems lv = bulletList . map (prettyLogElem lv)
+                    . bool id onlyLastCommit (squashCommits lv)
 
-prettyLogElems :: (PrettyLog e) => LogDetail -> [e] -> Doc
-prettyLogElems ld = bulletList . map (prettyLogElem ld)
+instance (TokenStream s, PrettyValue e) => PrettyLog (ParsingErrors e s) where
+  prettyLogElem lv pl
+    | completeSubLogs lv = prettyLogElems lv (completeLog pl)
+    | otherwise          = prettyLogElem  lv (finalError  pl)
 
 indentLine :: Doc -> Doc -> Doc
 indentLine l1 l2 = l1 $+$ nest 2 l2
@@ -318,8 +361,20 @@ indentLine l1 l2 = l1 $+$ nest 2 l2
 bulletList :: [Doc] -> Doc
 bulletList = vcat . map (char '*' <+>)
 
-nmSubLog :: (TokenStream s, PrettyValue e) => LogDetail
+nmSubLog :: (TokenStream s, PrettyValue e) => LogVerbosity
             -> (String, ParsingErrors e s) -> Doc
-nmSubLog ld (nm,lg) = (text nm  <> colon) `indentLine` prettyLogElem ld lg
+nmSubLog lv (nm,lg) = (text nm  <> colon) `indentLine` prettyLogElem lv lg
 
 -- -----------------------------------------------------------------------------
+
+onlyLastCommit :: [TaggedError e s] -> [TaggedError e s]
+onlyLastCommit = snd . foldr checkIfCommit (False,[])
+  where
+    checkIfCommit te st
+      | not . isCommitError . parseError $ te = second (te:) st
+      | fst st                                = st
+      | otherwise                             = (const True *** (te:)) st
+
+isCommitError :: ParseError e s -> Bool
+isCommitError Committed = True
+isCommitError _         = False
