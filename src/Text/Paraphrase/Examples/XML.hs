@@ -105,11 +105,14 @@ data Content = Elem String [Attr] [Content]
 -- | A simple alias just for readability purposes.
 type Attr = String
 
--- | The only logic error (as opposed to parsing error) we can have is
---   when the closing tag doesn't match the input tag.  We also define
---   a case for information purposes.
+-- | The possible special errors specific to this parser.
 data TagError = WrongClose String String
+                -- ^ Logic error: an opening tag is matched with the
+                --   wrong closing tag.
               | WithinTag String
+                -- ^ Notification for when we start parsing a new tag.
+              | ClosingTag String
+                -- ^ Notification for when we try to close a tag.
               deriving (Eq, Ord, Show, Read)
 
 -- | We need some way of displaying the error to end users.
@@ -119,6 +122,8 @@ instance PrettyValue TagError where
       <> PP.text "> terminated by </" <> PP.text close <> PP.text ">"
   prettyValue (WithinTag nm)
     = PP.text "Parsing tag:" <+> PP.text nm
+  prettyValue (ClosingTag nm)
+    = PP.text "Attempting to close tag" <+> PP.text nm
 
 -- | Due to the polymorphic nature of the 'Parser' type, it helps to
 --   define and use an overall type alias to make explicit what types
@@ -198,18 +203,16 @@ element = (token '<'
 
 -- | Called by 'element'; ends a tag with the specified name.
 endTag :: String -> Parse ()
-endTag n = do addTraceMessage ("Closing tag for: " ++ n)
-              m <- bracket (string "</") (token '>') name
-              if n == m
-                 then pure ()
-                 else failCustom (WrongClose n m)
+endTag n = addCustomOnFailure (ClosingTag n)
+             (do m <- bracket (string "</") (token '>') name
+                 if n == m
+                    then pure ()
+                    else failCustom (WrongClose n m))
+           <?> "endTag"
 
 -- | The overall parser.  Mutually recursive with 'element'.
 content :: Parse Content
 content = element <|> text <|> failWith NoParserSatisfied
-
-addTraceMessage :: String -> Parse ()
-addTraceMessage m = addStackTrace (Message m) (pure ())
 
 -- | A version with commit.  Mutually recursive with 'contentC'.  Calls
 --   'endTagC'.
@@ -224,13 +227,16 @@ elementC = token '<'
                        )
                   )
              )
+  <?> "elementC"
 
 -- | Called by 'elementC'; ends a tag with the specified name.
 endTagC :: String -> Parse ()
-endTagC n = do m <- bracket (string "</") (commit $ token '>') name
-               if n == m
-                  then pure ()
-                  else failCustom (WrongClose n m)
+endTagC n = addCustomOnFailure (ClosingTag n)
+              (do m <- bracket (string "</") (commit $ token '>') name
+                  if n == m
+                     then pure ()
+                     else failCustom (WrongClose n m))
+            <?> "endTagC"
 
 -- | The overall (committed) parser.  Mutually recursive with
 --   'elementC'.
