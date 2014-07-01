@@ -61,6 +61,7 @@ module Text.Paraphrase
        , PrettyValue (..)
        , ParsingErrors
        , failWith
+       , failCustom
        , failBadWith
        , finalError
        , completeLog
@@ -72,8 +73,10 @@ module Text.Paraphrase
        , (<?>)
        , failMessage
        , addStackTrace
+       , addCustomTrace
        , addStackTraceBad
        , addErrOnFailure
+       , addCustomOnFailure
          -- ** Low-level error adjustment
        , oneOf'
 
@@ -368,12 +371,29 @@ failMessage :: (ParseInput s) => ParseError e s -> Parser e s a -> Parser e s a
 failMessage e = (`onFail` failWith e)
 {-# INLINE failMessage #-}
 
+-- | A wrapper around 'failWith' for use with 'CustomError' errors.
+failCustom :: e -> Parser e s a
+failCustom = failWith . CustomError
+{-# INLINE failCustom #-}
+
+-- | A wrapper around 'addStackTrace' for use with 'CustomError'
+--   errors.
+addCustomTrace :: e -> Parser e s a -> Parser e s a
+addCustomTrace = addStackTrace . CustomError
+{-# INLINE addCustomTrace #-}
+
 -- | As with 'addStackTrace' but raise the severity of the error (same
 --   relationship as between 'failBadWith' and 'failWith').
 addStackTraceBad :: (ParseInput s) => ParseError e s
                     -> Parser e s a -> Parser e s a
 addStackTraceBad e = addStackTrace e . commit
 {-# INLINE addStackTraceBad #-}
+
+-- | A wrapper around 'addErrOnFailure' for use with 'CustomError'
+--   errors.
+addCustomOnFailure :: e -> Parser e s a -> Parser e s a
+addCustomOnFailure = addErrOnFailure . CustomError
+{-# INLINE addCustomOnFailure #-}
 
 -- | As with 'oneOf', but each potential parser is tagged with a
 --   \"name\" for error reporting.  The process is as follows:

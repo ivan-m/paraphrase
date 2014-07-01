@@ -188,7 +188,7 @@ to demonstrate how useful it can be.
 element :: Parse Content
 element = (token '<'
    *> do n <- name
-         addErrOnFailure (CustomError (WithinTag n)) (
+         addCustomOnFailure (WithinTag n) (
            do as <- fromMaybe [] <$> optional (space *> attributes)
               ( (string "/>" *> pure (Elem n as []))
                 <|>
@@ -202,7 +202,7 @@ endTag n = do addTraceMessage ("Closing tag for: " ++ n)
               m <- bracket (string "</") (token '>') name
               if n == m
                  then pure ()
-                 else failWith (CustomError (WrongClose n m))
+                 else failCustom (WrongClose n m)
 
 -- | The overall parser.  Mutually recursive with 'element'.
 content :: Parse Content
@@ -216,7 +216,7 @@ addTraceMessage m = addStackTrace (Message m) (pure ())
 elementC :: Parse Content
 elementC = token '<'
   *> commit ( do n <- name
-                 addErrOnFailure (CustomError (WithinTag n)) (
+                 addCustomOnFailure (WithinTag n) (
                    do as <- fromMaybe [] <$> optional (space *> attributes)
                       ( (string "/>" *> commit (pure (Elem n as [])))
                         <|>
@@ -230,7 +230,7 @@ endTagC :: String -> Parse ()
 endTagC n = do m <- bracket (string "</") (commit $ token '>') name
                if n == m
                   then pure ()
-                  else failWith (CustomError (WrongClose n m))
+                  else failCustom (WrongClose n m)
 
 -- | The overall (committed) parser.  Mutually recursive with
 --   'elementC'.
