@@ -153,6 +153,9 @@ token t = satisfyWith (ExpectedButFound t) (t==)
 {-# INLINE token #-}
 
 -- | Return the result of the first parser in the list that succeeds.
+--
+--   Consider using 'oneOf'' instead, as it will result in better
+--   error messages.
 oneOf :: (ParseInput s) => [Parser e s a] -> Parser e s a
 oneOf = wrapCommitment . foldr onFail (failWith NoParserSatisfied)
 {-# INLINE oneOf #-}
