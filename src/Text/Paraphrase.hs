@@ -92,6 +92,7 @@ import Text.Paraphrase.Wrappers
 
 import Control.Applicative
 import Data.IsNull         (isNull)
+import Data.Monoid         ((<>))
 
 -- -----------------------------------------------------------------------------
 -- Commitment
@@ -411,8 +412,14 @@ oneOf' = wrapCommitment . go id
   where
     go errs [] = failWith (NamedSubLogs (errs []))
 
-    -- Can't use <|> here as we want access to `e'.  Otherwise this is
-    -- pretty much a duplicate of onFail.
     go errs ((nm,p):ps) =
       let go' e = go (errs . ((nm,e):)) ps
-      in onFailWith go' p
+
+          -- We're un-doing the implicit dlist here... but that's OK,
+          -- because this is only called at the end when the parser
+          -- has either succeeded or has failed but is committed.
+          fsc el' s el
+            | null errs' = el <> el'
+            | otherwise  = logError el (NamedSubLogs errs') s <> el'
+          errs' = errs []
+      in onFailWith go' fsc p

@@ -419,18 +419,25 @@ onFailW p1 p2 = wrapCommitment (p1 `onFail` p2)
 {-# INLINE onFailW #-}
 
 onFail :: (ParseInput s) => Parser e s a -> Parser e s a -> Parser e s a
-onFail p1 p2 = onFailWith p1Fl p1
+onFail p1 p2 = onFailWith p1Fl p1Sc p1
   where
     p1Fl el = addErrOnFailure (Backtrack el) p2
+    p1Sc el = const (<>el)
 {-# INLINE onFail #-}
 
 onFailWith :: (ParseInput s)
               => (ParsingErrors e s -> Parser e s a)
                  -- ^ Construct the parser for the failure case
+              -> (ParseLog e s -> s -> ParseLog e s -> ParseLog e s)
+                 -- ^ For successful parses and committed failures,
+                 --   how to combine the sub-log with the existing
+                 --   log.  The provided input value is from the
+                 --   initial run of the parser in case overall errors
+                 --   are to be added.
               -> Parser e s a -> Parser e s a
-onFailWith fp p = P $ \ pSt fl sc ->
+onFailWith fp fs p = P $ \ pSt fl sc ->
   let toFL pl' pSt' e
-           | isCommitted pSt' = failure (rebaseState pl' pSt') e -- Ideally would deal with previous failures in oneOf'
+           | isCommitted pSt' = failure (rebaseState pl' pSt') e
            | otherwise        = let el = createFinalLog pl' e (input pSt)
                                 in mergeIncremental pSt pSt' $
                                      \ pSt'' -> runP (fp el) pSt'' fl sc
@@ -442,7 +449,8 @@ onFailWith fp p = P $ \ pSt fl sc ->
       toSc pl' pSt' = sc (rebaseState pl' pSt')
 
       rebaseState pl' pSt' = pSt' { add    = withAdd (add pSt')
-                                  , errLog = withTop (<>pl') (errLog pSt')
+                                  -- Note: use input of pSt for fs, not pSt'!
+                                  , errLog = withTop (fs pl' (input pSt)) (errLog pSt')
                                   }
         where
           -- If committed, we ignore any additional input that came previously.
