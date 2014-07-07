@@ -26,7 +26,8 @@ library
                        , Text.Paraphrase.Types
                        , Text.Paraphrase.Wrappers
 
-  build-depends:         base >=4.7 && <4.8
+  build-depends:         base >=4.6 && <4.8
+                       , base-compat >= 0.4.0
                        , deepseq
                        , bytestring
                        , text >= 0.11.3.1

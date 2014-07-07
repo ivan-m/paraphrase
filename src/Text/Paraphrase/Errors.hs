@@ -38,7 +38,7 @@ import Text.PrettyPrint.HughesPJ hiding (isEmpty, (<>))
 import           Control.Applicative (liftA2)
 import           Control.Arrow       (second, (&&&), (***))
 import           Control.DeepSeq     (NFData (rnf))
-import           Data.Bool           (bool)
+import           Data.Bool.Compat    (bool)
 import qualified Data.DList          as DL
 import           Data.Function       (on)
 import           Data.Monoid
