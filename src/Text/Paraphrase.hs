@@ -17,6 +17,7 @@ module Text.Paraphrase
          Parser
          -- ** Running parsers
        , parseInput
+       , parseAndFeed
        , runParser
        , runParser'
          -- ** Parsing results

@@ -251,6 +251,22 @@ parseInput :: (ParseInput s) => Parser e s a -> Stream s -> Result e s a
 parseInput p inp = runP p (makeState inp Incomplete) failure successful
 {-# INLINE parseInput #-}
 
+-- | Run the specified parser using the input provided by the first
+--   monadic action.  If additional input is required the second
+--   monadic action is used (if none is available, use @return
+--   mempty@).
+--
+--   Two different monadic actions are required in case a different
+--   action is needed for additional input compared to the original
+--   input source.
+parseAndFeed :: (ParseInput s, Monad m) => Parser e s a
+                -> m (Stream s) -> m (Stream s) -> m (EitherResult e s a, s)
+parseAndFeed p minp madd = minp >>= go (parseInput p)
+  where
+    go withInp inp = case withInp inp of
+                       Partial _pl prt -> madd >>= go prt
+                       res             -> return (resultToEither res)
+
 -- | Run a parser.
 runParser :: (ParseInput s) => Parser e s a -> Stream s -> (EitherResult e s a, s)
 runParser p inp = resultToEither (runP p (makeState inp Complete) failure successful)
@@ -473,7 +489,6 @@ wrapCommitment p = P $ \ pSt fl sc ->
       sc' pSt' = sc (pSt' { isCommitted = origCommit || isCommitted pSt' })
   in runP p (pSt { isCommitted = False }) fl' sc'
 {-# INLINE wrapCommitment #-}
-
 
 instance Monad (Parser e s) where
   return = returnP
