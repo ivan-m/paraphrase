@@ -291,6 +291,11 @@ data LogVerbosity = LV { -- | Remove all but the last commit message?
                          --   etc. be displayed rather than just the
                          --   last error?
                        , completeSubLogs :: Bool
+
+                         -- | Remove all but the last sub-log?
+                         --   (sub-logs are used for backtracking,
+                         --   chained parsers, etc.)
+                       , squashSubLogs   :: Bool
                        }
                   deriving (Eq, Ord, Show, Read)
 
@@ -299,6 +304,7 @@ defVerbosity = LV { squashCommits   = True
                   , displayStreams  = False
                   , displayInputs   = False
                   , completeSubLogs = False
+                  , squashSubLogs   = True
                   }
 
 -- | Internal class to abstract out between 'TaggedError' and
@@ -348,7 +354,8 @@ instance (TokenStream s, PrettyValue e) => PrettyLog (ParseError e s) where
 prettyLogElems :: (TokenStream s, PrettyValue e)
                   => LogVerbosity -> [TaggedError e s] -> Doc
 prettyLogElems lv = bulletList . map (prettyLogElem lv)
-                    . bool id onlyLastCommit (squashCommits lv)
+                    . bool id (squish hasSubLog)     (squashSubLogs lv)
+                    . bool id (squish isCommitError) (squashCommits lv)
 
 instance (TokenStream s, PrettyValue e) => PrettyLog (ParsingErrors e s) where
   prettyLogElem lv pl
@@ -367,14 +374,21 @@ nmSubLog lv (nm,lg) = (text nm  <> colon) `indentLine` prettyLogElem lv lg
 
 -- -----------------------------------------------------------------------------
 
-onlyLastCommit :: [TaggedError e s] -> [TaggedError e s]
-onlyLastCommit = snd . foldr checkIfCommit (False,[])
+squish :: (ParseError e s -> Bool) -> [TaggedError e s] -> [TaggedError e s]
+squish p = snd . foldr check (False,[])
   where
-    checkIfCommit te st
-      | not . isCommitError . parseError $ te = second (te:) st
-      | fst st                                = st
-      | otherwise                             = (const True *** (te:)) st
+    check te st
+      | not . p . parseError $ te = second (te:) st
+      | fst st                    = st
+      | otherwise                 = (const True *** (te:)) st
 
 isCommitError :: ParseError e s -> Bool
 isCommitError Committed = True
 isCommitError _         = False
+
+hasSubLog :: ParseError e s -> Bool
+hasSubLog e = case e of
+                Backtrack _    -> True
+                NamedSubLogs _ -> True
+                SubLog _       -> True
+                _              -> False
