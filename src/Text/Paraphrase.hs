@@ -25,7 +25,9 @@ module Text.Paraphrase
        , resultToEither
        , EitherResult
          -- ** Parser input
-       , TokenStream (Stream, Token)
+       , TokenStream
+       , Stream
+       , Token
        , ParseInput (..)
        , AsChar8(..)
        , Word8Input(..)
