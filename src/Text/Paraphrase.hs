@@ -258,7 +258,7 @@ bracketSep open sep close p =
 --   could be due to either of these parsers not succeeding, both
 --   possible errors are raised.
 manyFinally :: (ParseInput s) => Parser e s a -> Parser e s z -> Parser e s [a]
-manyFinally p t = addStackTrace ListWithTerminator
+manyFinally p t = addErrOnFailure ListWithTerminator
                   ( many p
                     -- If t succeeds, then it will do so here.
                     -- Otherwise, better error reporting!
@@ -275,7 +275,7 @@ manyFinally p t = addStackTrace ListWithTerminator
 --   If there's no risk of overlap between the two parsers, you should
 --   probably use 'manyFinally'.
 manyFinally' :: (ParseInput s) => Parser e s a -> Parser e s z -> Parser e s [a]
-manyFinally' p t = addStackTrace ListWithTerminator go
+manyFinally' p t = addErrOnFailure ListWithTerminator go
   where
     go =     (t *> pure [])
          <|> liftA2 (:) (p <|> errCheck) go
