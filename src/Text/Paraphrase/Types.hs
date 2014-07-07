@@ -53,9 +53,9 @@ See also the provided conventions for referring to values of type
 --   The @Failure@ case contains the bare error message as well as the
 --   function that will produce any additional error messages (stack
 --   traces, etc.) if so desired.
-data Result e s a = Success s a
-                  | Failure s (ParsingErrors e s)
-                  | Partial   (ParsingErrors e s) (Stream s -> Result e s a)
+data Result e s a = Success (Stream s) a
+                  | Failure (Stream s) (ParsingErrors e s)
+                  | Partial            (ParsingErrors e s) (Stream s -> Result e s a)
                     -- ^ Indicates that the parser requires more input
                     --   to continue.
                     --
@@ -96,10 +96,10 @@ instance (NFData e, ParseInput s, NFData s, NFData (Stream s), NFData (Token s),
 type EitherResult e s a = Either (ParsingErrors e s) a
 
 -- | Convert the result into an 'Either' value.
-resultToEither :: (ParseInput s) => Result e s a -> (EitherResult e s a, s)
+resultToEither :: (ParseInput s) => Result e s a -> (EitherResult e s a, Stream s)
 resultToEither (Success s a)     = (Right a, s)
 resultToEither (Failure s pl)    = (Left pl, s)
-resultToEither (Partial pl _cnt) = (Left pl, fromStream mempty)
+resultToEither (Partial pl _cnt) = (Left pl, mempty)
 
 -- | Change the custom error type.  Useful if you want to chain an
 --   existing parser into your own parser where the error type is
@@ -223,8 +223,8 @@ type Success e s a r = ParseState e s -> a -> Result e s r
 
 -- Dum... Dum... Dum... DUMMMMMM!!!  The parsing has gone all wrong,
 -- so apply the error-message adjustment and stop doing anything.
-failure :: Failure e s r
-failure pSt e = Failure (input pSt) (createLogFrom pSt e)
+failure :: (ParseInput s) => Failure e s r
+failure pSt e = Failure (getStream $ input pSt) (createLogFrom pSt e)
 {-# INLINE failure #-}
 
 createLogFrom :: ParseState e s -> ParseError e s -> ParsingErrors e s
@@ -232,8 +232,8 @@ createLogFrom pSt e = createFinalLog (mergedLog pSt) e (input pSt)
 {-# INLINE createLogFrom #-}
 
 -- Hooray!  We're all done here, and a job well done!
-successful :: Success e s a a
-successful pSt = Success (input pSt)
+successful :: (ParseInput s) => Success e s a a
+successful pSt = Success (getStream $ input pSt)
 {-# INLINE successful #-}
 
 makeState :: (ParseInput s) => Stream s -> More -> ParseState e s
@@ -260,7 +260,7 @@ parseInput p inp = runP p (makeState inp Incomplete) failure successful
 --   action is needed for additional input compared to the original
 --   input source.
 parseAndFeed :: (ParseInput s, Monad m) => Parser e s a
-                -> m (Stream s) -> m (Stream s) -> m (EitherResult e s a, s)
+                -> m (Stream s) -> m (Stream s) -> m (EitherResult e s a, Stream s)
 parseAndFeed p minp madd = minp >>= go (parseInput p)
   where
     go withInp inp = case withInp inp of
@@ -268,7 +268,8 @@ parseAndFeed p minp madd = minp >>= go (parseInput p)
                        res             -> return (resultToEither res)
 
 -- | Run a parser.
-runParser :: (ParseInput s) => Parser e s a -> Stream s -> (EitherResult e s a, s)
+runParser :: (ParseInput s) => Parser e s a -> Stream s
+             -> (EitherResult e s a, Stream s)
 runParser p inp = resultToEither (runP p (makeState inp Complete) failure successful)
 {-# INLINE runParser #-}
 
