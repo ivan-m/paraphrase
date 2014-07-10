@@ -12,8 +12,11 @@
 
  -}
 module Text.Paraphrase.Wrappers
-  ( AsChar8(..)
-  , Word8Input(..)
+  ( -- * Treating @Word8@ values as if they were @Char@s.
+    AsChar8 (..)
+  , Word8Input (..)
+    -- * Counting the number of tokens consumed.
+  , ConsumedTokens (..)
   ) where
 
 import Text.Paraphrase.Inputs
@@ -102,3 +105,68 @@ instance (Word8Input s) => ParseInput (AsChar8 s) where
   {-# INLINE breakWhen #-}
 
 -- -----------------------------------------------------------------------------
+
+-- | Primarily aimed for better debugging support, this wrapper
+--   indicates how many tokens have so far been consumed from the
+--   input.
+--
+--   Production code should not use this wrapper as it affects
+--   performance.
+--
+--   Note that this counter does not behave well with the 'reparse'
+--   combinator (in that no distinction is made between the original
+--   inputs and the stream added by 'reparse').
+data ConsumedTokens s = CT { consumed :: !Int
+                           , cStream  :: !s
+                           }
+                      deriving (Eq, Ord, Show, Read)
+
+createCT :: s -> ConsumedTokens s
+createCT = CT 0
+
+instance (ParseInput s) => TokenStream (ConsumedTokens s) where
+  type Stream (ConsumedTokens s) = Stream s
+
+  type Token  (ConsumedTokens s) = Token  s
+
+  prettyInput (CT c s) = addPrettyInput ("Consumed Tokens", prettyValue c)
+                                        (prettyInput s)
+
+instance (ParseInput s) => ParseInput (ConsumedTokens s) where
+
+  getStream = getStream . cStream
+  {-# INLINE getStream #-}
+
+  fromStream = createCT . fromStream
+  {-# INLINE fromStream #-}
+
+  prependStream s ct = ct { cStream = s `prependStream` cStream ct }
+  {-# INLINE prependStream #-}
+
+  appendStream ct s = ct { cStream = cStream ct `appendStream` s }
+  {-# INLINE appendStream #-}
+
+  inputHead = inputHead . cStream
+  {-# INLINE inputHead #-}
+
+  inputTail (CT c s) = CT { consumed = c + 1
+                          , cStream  = inputTail s
+                          }
+  {-# INLINE inputTail #-}
+
+  lengthAtLeast = lengthAtLeast . cStream
+  {-# INLINE lengthAtLeast #-}
+
+  breakWhen f (CT c s) =
+    let (str, s') = breakWhen f s
+        ct' = CT { consumed = c + LL.length str
+                 , cStream  = s'
+                 }
+    in (str, ct')
+  {-# INLINE breakWhen #-}
+
+instance (NFData s) => NFData (ConsumedTokens s) where
+  rnf (CT c s) = rnf c `seq` rnf s
+
+instance (IsString s) => IsString (ConsumedTokens s) where
+  fromString = createCT . fromString
