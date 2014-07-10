@@ -93,9 +93,9 @@ import Text.Paraphrase.Inputs
 import Text.Paraphrase.Types
 import Text.Paraphrase.Wrappers
 
-import Control.Applicative
-import Data.IsNull         (isNull)
-import Data.Monoid         ((<>))
+import           Control.Applicative
+import qualified Data.ListLike       as LL
+import           Data.Monoid         ((<>))
 
 -- -----------------------------------------------------------------------------
 -- Commitment
@@ -188,7 +188,7 @@ manySatisfy f = go
 someSatisfy :: (ParseInput s) => (Token s -> Bool) -> Parser e s (Stream s)
 someSatisfy f = addStackTrace PredicateNotSatisfied
                 ( do r <- manySatisfy f
-                     if isNull r
+                     if LL.null r
                         then next >>= failWith . UnexpectedToken
                              -- This will also take care of empty input
                              -- case.

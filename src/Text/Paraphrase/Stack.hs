@@ -21,13 +21,12 @@ module Text.Paraphrase.Stack
   ) where
 
 import Control.Arrow (first)
-import Data.IsNull
 import Data.Monoid
 
 -- -----------------------------------------------------------------------------
 
 newtype Stack a = Stack { unStack :: [a] }
-                  deriving (Eq, Ord, Show, Read, Monoid, IsNull, Functor)
+                  deriving (Eq, Ord, Show, Read, Monoid, Functor)
 
 push :: a -> Stack a -> Stack a
 push a = Stack . (a:) . unStack

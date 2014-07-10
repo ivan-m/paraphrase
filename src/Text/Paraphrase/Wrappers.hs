@@ -24,10 +24,9 @@ import qualified Data.ByteString.Lazy     as LB
 import           Data.String              (IsString (..))
 import           Data.Word                (Word8)
 
-import Control.Arrow   (second)
-import Control.DeepSeq (NFData)
-import Data.IsNull     (IsNull)
-import Data.Monoid     (Monoid)
+import           Control.Arrow   (second)
+import           Control.DeepSeq (NFData (..))
+import qualified Data.ListLike   as LL
 
 -- -----------------------------------------------------------------------------
 -- How to treat Word8-based types as if they contained Char values.
@@ -36,11 +35,11 @@ import Data.Monoid     (Monoid)
 --   (e.g. 'SB.ByteString') as if they actually contained
 --   Latin1-encoded 'Char' values.
 newtype AsChar8 s = AsChar8 { unChar8 :: s }
-                    deriving (Eq, Ord, Show, Read, Monoid, NFData, IsNull)
+                    deriving (Eq, Ord, Show, Read, NFData)
 
 -- | For values that store 'Word8's.  The constraints are used more to
 --   minimise the required constraints for 'AsChar8' instances than
---   because this typeclass needs/assumes them.
+--   because this typeclass needs\/assumes them.
 class (Show s, ParseInput s, Token s ~ Word8) => Word8Input s where
   toWord8List :: s -> [Word8]
 

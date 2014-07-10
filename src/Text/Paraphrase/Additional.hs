@@ -13,9 +13,8 @@ import Text.Paraphrase.Errors (ParseError (..), createFinalLog)
 import Text.Paraphrase.Inputs
 import Text.Paraphrase.Types
 
-import Control.Applicative
-import Data.IsNull
-import Data.Monoid
+import           Control.Applicative
+import qualified Data.ListLike       as LL
 
 -- -----------------------------------------------------------------------------
 
@@ -75,8 +74,10 @@ requestInput :: (ParseInput s) =>
                -> (ParseState e s -> Result e s r) -- Success case
                -> Result e s r
 requestInput pSt fl sc = Partial partialLog $ \ s ->
-  if isNull s
+  if LL.null s
      then fl (pSt { more = Complete })
-     else sc (pSt { input = input pSt `appendStream` s, add = add pSt <> s })
+     else sc (pSt { input = input pSt `appendStream` s
+                  , add   = add   pSt `LL.append`    s
+                  })
   where
     partialLog = createFinalLog (mergedLog pSt) AwaitingInput (input pSt)

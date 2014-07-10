@@ -1,4 +1,5 @@
-{-# LANGUAGE DefaultSignatures, FlexibleContexts, TypeFamilies #-}
+{-# LANGUAGE ConstraintKinds, DefaultSignatures, FlexibleContexts,
+             TypeFamilies #-}
 {- |
    Module      : Text.Paraphrase.Inputs
    Description : Defining possible inputs for parsing
@@ -17,6 +18,7 @@
 module Text.Paraphrase.Inputs
   ( -- * Streams and Tokens
     TokenStream (..)
+  , BaseStream
     -- ** Pretty-printing support
   , PrettyValue (..)
   , PrettyInput
@@ -40,11 +42,10 @@ import qualified Data.Text.Unsafe           as ST
 import           Data.Word                  (Word8)
 import           Text.PrettyPrint.HughesPJ  (Doc, render)
 
-import Control.Applicative (liftA2)
-import Control.DeepSeq     (NFData (rnf))
-import Data.Function       (on)
-import Data.Monoid         (Monoid, (<>))
-import Data.IsNull         (IsNull)
+import           Control.Applicative (liftA2)
+import           Control.DeepSeq     (NFData (rnf))
+import           Data.Function       (on)
+import qualified Data.ListLike       as LL
 
 -- -----------------------------------------------------------------------------
 
@@ -127,6 +128,12 @@ instance Eq Doc where
 
 -- -----------------------------------------------------------------------------
 
+-- | What we expect all base-level 'ParseInput' values to look like.
+--
+--   The 'LL.ListLike' requirement is used to provide many common
+--   definitions (rather than re-defining them here).
+type BaseStream s = (TokenStream s, Stream s ~ s, LL.ListLike s (Token s))
+
 -- | The types which we know how to manipulate at a low-level.  This
 --   class defines the minimum that is required to use all parser
 --   combinators.
@@ -138,7 +145,7 @@ instance Eq Doc where
 --   that @'Stream' s ~ s@), then make sure you provide definitions
 --   for 'getStream', 'fromStream', 'prependStream' and 'appendStream'
 --   (otherwise you'll get type definition warnings).
-class (TokenStream s, Monoid (Stream s), IsNull (Stream s)) => ParseInput s where
+class (TokenStream s, BaseStream (Stream s)) => ParseInput s where
 
   -- | The current stream stored in this input value.  Pre-defined
   --   when @Stream s ~ s@.
@@ -148,7 +155,7 @@ class (TokenStream s, Monoid (Stream s), IsNull (Stream s)) => ParseInput s wher
   {-# INLINE getStream #-}
 
   -- | Create a new input value from the provided stream.  As such, a
-  --   blank input value will be equivalent to @fromStream 'mempty'@.
+  --   blank input value will be equivalent to @fromStream 'LL.empty'@.
   --   Pre-defined when @Stream s ~ s@.
   fromStream :: Stream s -> s
   default fromStream :: (Stream s ~ s) => s -> s
@@ -157,34 +164,55 @@ class (TokenStream s, Monoid (Stream s), IsNull (Stream s)) => ParseInput s wher
 
   -- | Add new @Stream@ value to the front.  Default provided for
   --   values that are their own Stream.
+  --
+  --   This is used by the 'reparse' combinator.
   prependStream :: Stream s -> s -> s
   default prependStream :: (Stream s ~ s) => s -> s -> s
-  prependStream = (<>)
+  prependStream = LL.append
   {-# INLINE prependStream #-}
 
   -- | Add new @Stream@ value to the back.  Default provided for
   --   values that are their own Stream.
+  --
+  --   This is used when additional input is requested.
   appendStream :: s -> Stream s ->  s
   default appendStream :: (Stream s ~ s) => s -> s -> s
-  appendStream = (<>)
+  appendStream = LL.append
   {-# INLINE appendStream #-}
 
   -- | Obtain the first token in the input.  Only used when the input
-  --   isn't empty, honest!
+  --   isn't empty, honest!  Default provided for values that are
+  --   their own Stream.
   inputHead :: s -> Token s
+  default inputHead :: (Stream s ~ s) => s -> Token s
+  inputHead = LL.head
+  {-# INLINE inputHead #-}
 
   -- | Return all but the first token of the input.  Only used when
-  --   the input isn't empty, honest!
+  --   the input isn't empty, honest!  Default provided for values
+  --   that are their own Stream.
   inputTail :: s -> s
+  default inputTail :: (Stream s ~ s) => s -> s
+  inputTail = LL.tail
+  {-# INLINE inputTail #-}
 
-  -- | Do we have at least @n@ tokens available?
+  -- | Do we have at least @n@ tokens available?  Default provided for
+  --   values that are their own Stream (which assumes @O(1)@
+  --   'LL.length' calculation).
   lengthAtLeast :: s -> Int -> Bool
+  default lengthAtLeast :: (Stream s ~ s) => s -> Int -> Bool
+  lengthAtLeast s n = LL.length s >= n
+  {-# INLINE lengthAtLeast #-}
 
   -- | Split the stream where the predicate is no longer satisfied
   --   (that is, the @fst@ component contains the largest possible
   --   prefix where all values satisfy the predicate, and the @snd@
-  --   component contains the remainder of the input).
+  --   component contains the remainder of the input).  Default
+  --   provided for values that are their own Stream.
   breakWhen :: (Token s -> Bool) -> s -> (Stream s,s)
+  default breakWhen :: (Stream s ~ s) => (Token s -> Bool) -> s -> (s,s)
+  breakWhen = LL.span
+  {-# INLINE breakWhen #-}
 
 -- -----------------------------------------------------------------------------
 -- Instances for various concrete types.
@@ -194,22 +222,15 @@ instance (PrettyValue a) => TokenStream [a] where
 
 instance (PrettyValue a) => ParseInput [a] where
 
-  inputHead = head
-  {-# INLINE inputHead #-}
-
-  inputTail = tail
-  {-# INLINE inputTail #-}
-
   lengthAtLeast as n = not . null . drop (n-1) $ as
   {-# INLINE lengthAtLeast #-}
-
-  breakWhen = span
-  {-# INLINE breakWhen #-}
 
 instance TokenStream SB.ByteString where
   type Token SB.ByteString = Word8
 
 instance ParseInput SB.ByteString where
+
+  -- Keep using the unsafe variants for a tad more performance.
 
   inputHead = SB.unsafeHead
   {-# INLINE inputHead #-}
@@ -217,35 +238,19 @@ instance ParseInput SB.ByteString where
   inputTail = SB.unsafeTail
   {-# INLINE inputTail #-}
 
-  -- length is O(1)
-  lengthAtLeast bs n = SB.length bs >= n
-  {-# INLINE lengthAtLeast #-}
-
-  breakWhen = SB.span
-  {-# INLINE breakWhen #-}
-
 instance TokenStream LB.ByteString where
   type Token LB.ByteString = Word8
 
-instance ParseInput LB.ByteString where
-
-  inputHead = LB.head
-  {-# INLINE inputHead #-}
-
-  inputTail = LB.tail
-  {-# INLINE inputTail #-}
-
-  -- length is O(n)
-  lengthAtLeast bs n = LB.length bs >= fromIntegral n
-  {-# INLINE lengthAtLeast #-}
-
-  breakWhen = LB.span
-  {-# INLINE breakWhen #-}
+instance ParseInput LB.ByteString
+  -- length is O(n), but there's no better way of doing it so use the
+  -- default. for lengthAtLeast
 
 instance TokenStream ST.Text where
   type Token ST.Text = Char
 
 instance ParseInput ST.Text where
+
+  -- Keep using the unsafe variants for a tad more performance.
 
   inputHead = ST.unsafeHead
   {-# INLINE inputHead #-}
@@ -260,24 +265,9 @@ instance ParseInput ST.Text where
   lengthAtLeast t n = (ST.lengthWord16 t `quot` 2) >= n || ST.length t >= n
   {-# INLINE lengthAtLeast #-}
 
-  breakWhen = ST.span
-  {-# INLINE breakWhen #-}
-
 instance TokenStream LT.Text where
   type Token LT.Text = Char
 
-instance ParseInput LT.Text where
-
-  inputHead = LT.head
-  {-# INLINE inputHead #-}
-
-  inputTail = LT.tail
-  {-# INLINE inputTail #-}
-
-  -- Doesn't seem to be any real alternative but to do the O(n)
-  -- length.
-  lengthAtLeast t n = LT.length t >= fromIntegral n
-  {-# INLINE lengthAtLeast #-}
-
-  breakWhen = LT.span
-  {-# INLINE breakWhen #-}
+instance ParseInput LT.Text
+  -- length is O(n), but there's no better way of doing it so use the
+  -- default. for lengthAtLeast

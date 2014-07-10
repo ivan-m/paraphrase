@@ -17,12 +17,12 @@ import Text.Paraphrase.Inputs (ParseInput (..), TokenStream (..))
 import Text.Paraphrase.Pretty (PrettyValue)
 import Text.Paraphrase.Stack
 
-import Control.Applicative
-import Control.Arrow       (second)
-import Control.DeepSeq     (NFData (rnf))
-import Control.Monad       (MonadPlus (..))
-import Data.IsNull         (isNull)
-import Data.Monoid
+import           Control.Applicative
+import           Control.Arrow       (second)
+import           Control.DeepSeq     (NFData (rnf))
+import           Control.Monad       (MonadPlus (..))
+import qualified Data.ListLike       as LL
+import           Data.Monoid
 
 -- -----------------------------------------------------------------------------
 
@@ -581,5 +581,5 @@ ignoreAdditional pSt f = f ( pSt { add = mempty } )
 
 -- | Is the current state of the input empty?
 isEmpty :: (ParseInput s) => s -> Bool
-isEmpty = isNull . getStream
+isEmpty = LL.null . getStream
 {-# INLINE isEmpty #-}
