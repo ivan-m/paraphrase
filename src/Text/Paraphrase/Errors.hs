@@ -59,8 +59,8 @@ data ParseError e s
   = UnexpectedEndOfInput
   | NoMoreInputExpected -- ^ When more input requested after being told there isn't any more.
   | ExpectedEndOfInput  -- ^ The parser expected no more input even when more remains.
-  | ExpectedButFound (Token s) (Token s) -- ^ The token that was expected/required.
-  | UnexpectedToken (Token s)            -- ^ Token found that did not match what was required/expected.
+  | ExpectedButFound (Token s) (Token s) -- ^ The token that was expected\/required.
+  | UnexpectedToken (Token s)            -- ^ Token found that did not match what was required\/expected.
   | ExpectedButFoundStream (Stream s) (Stream s)
     -- ^ The stream that was expected\/required and what was actually found.
   | MissingItemCount Int                 -- ^ Expected this many more items that were not found.
@@ -137,6 +137,8 @@ instance PrettyValue BracketType where
   prettyValue OpenBracket  = text "opening"
   prettyValue CloseBracket = text "closing"
 
+-- -----------------------------------------------------------------------------
+
 -- | A 'ParseError' tagged with the current input at the location of
 --   where it arose.
 data TaggedError e s = TE { parseError    :: !(ParseError e s)
@@ -153,6 +155,8 @@ instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s), NFData e
 
 instance MapError TaggedError where
   convertErrorBy f te = te { parseError = convertErrorBy f (parseError te) }
+
+-- -----------------------------------------------------------------------------
 
 newtype ParseLog e s = PL { getLog :: DL.DList (TaggedError e s) }
 
@@ -173,6 +177,8 @@ instance MapError ParseLog where
 -- | Add a @ParseError@ to the end of the log.
 logError :: ParseLog e s -> ParseError e s -> s -> ParseLog e s
 logError pl e inp = pl { getLog = getLog pl `DL.snoc` (TE e inp) }
+
+-- -----------------------------------------------------------------------------
 
 createFinalLog :: ParseLog e s -> ParseError e s -> s -> ParsingErrors e s
 createFinalLog pl e inp = PEs pl (TE e inp)
