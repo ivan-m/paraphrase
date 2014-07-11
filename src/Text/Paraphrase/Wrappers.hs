@@ -117,8 +117,8 @@ instance (Word8Input s) => ParseInput (AsChar8 s) where
 --   performance.
 --
 --   Note that this counter does not behave well with the 'reparse'
---   combinator (in that no distinction is made between the original
---   inputs and the stream added by 'reparse').
+--   combinator (in that the provided stream decreases the count of
+--   the number of tokens consumed).
 data ConsumedTokens s = CT { consumed :: !Int
                            , cStream  :: !s
                            }
@@ -143,7 +143,9 @@ instance (ParseInput s) => ParseInput (ConsumedTokens s) where
   fromStream = createCT . fromStream
   {-# INLINE fromStream #-}
 
-  prependStream s ct = ct { cStream = s `prependStream` cStream ct }
+  prependStream str (CT c s) = CT { consumed = c - LL.length str
+                                  , cStream  = str `prependStream` s
+                                  }
   {-# INLINE prependStream #-}
 
   appendStream ct s = ct { cStream = cStream ct `appendStream` s }
