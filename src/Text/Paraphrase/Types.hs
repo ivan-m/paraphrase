@@ -626,6 +626,14 @@ needMoreInput = P $ \ pSt fl sc ->
               sc' pSt' = sc pSt' ()
           in requestInput pSt fl' sc'
 
+-- | A variant of 'needMoreInput' that always succeeds, even if no
+--   more input is available.
+tryGetMoreInput :: (ParseInput s) => Parser e s ()
+tryGetMoreInput = P $ \ pSt _fl sc ->
+  if more pSt == Complete
+     then sc pSt ()
+     else requestInput pSt (`sc` ()) (`sc` ())
+
 -- | Construct a 'Partial' 'Result' with a continuation function that
 --   will use the first provided function if it fails, and the second
 --   if it succeeds.
