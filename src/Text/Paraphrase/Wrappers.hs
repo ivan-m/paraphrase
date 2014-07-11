@@ -170,7 +170,7 @@ instance (ParseInput s) => ParseInput (ConsumedTokens s) where
 
   getStreamLength n (CT c s) =
     let (str,s') = getStreamLength n s
-        ct' = CT { consumed = c + LL.length str
+        ct' = CT { consumed = c + n
                  , cStream  = s'
                  }
     in (str, ct')
