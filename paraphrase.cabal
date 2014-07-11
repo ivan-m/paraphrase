@@ -19,8 +19,7 @@ library
 
                        , Text.Paraphrase.Examples.XML
 
-  other-modules:         Text.Paraphrase.Additional
-                       , Text.Paraphrase.Errors
+  other-modules:         Text.Paraphrase.Errors
                        , Text.Paraphrase.Pretty
                        , Text.Paraphrase.Stack
                        , Text.Paraphrase.Types

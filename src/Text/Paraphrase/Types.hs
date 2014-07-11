@@ -1,5 +1,5 @@
-{-# LANGUAGE BangPatterns, FlexibleContexts, RankNTypes, StandaloneDeriving,
-             TypeFamilies, UndecidableInstances #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts, FlexibleInstances, RankNTypes,
+             StandaloneDeriving, TypeFamilies, UndecidableInstances #-}
 {- |
    Module      : Text.Paraphrase.Types
    Description : Definition of types
@@ -23,6 +23,7 @@ import           Control.DeepSeq     (NFData (rnf))
 import           Control.Monad       (MonadPlus (..))
 import qualified Data.ListLike       as LL
 import           Data.Monoid
+import           Data.String         (IsString (..))
 
 -- -----------------------------------------------------------------------------
 
@@ -521,6 +522,21 @@ instance (ParseInput s) => MonadPlus (Parser e s) where
   mplus = onFail
   {-# INLINE mplus #-}
 
+-- | This uses the 'stream' parser.
+instance (ParseInput s, Eq (Stream s), IsString (Stream s))
+         => IsString (Parser e s ()) where
+  fromString = stream . fromString
+
+-- | Match a specified sub-stream.
+stream :: (ParseInput s, Eq (Stream s)) => Stream s -> Parser e s ()
+stream str = do
+  let n = LL.length str
+  inp <- getAtLeast n
+  let (!pre,suf) = getStreamLength n inp
+  if str == pre
+     then put suf
+     else failWith (ExpectedButFoundStream str pre)
+
 -- -----------------------------------------------------------------------------
 -- Commitment
 
@@ -575,6 +591,60 @@ mergeIncremental pSt1 pSt2 f =
 ignoreAdditional :: (ParseInput s) => ParseState e s -> (ParseState e s -> r) -> r
 ignoreAdditional pSt f = f ( pSt { add = mempty } )
 {-# INLINE ignoreAdditional #-}
+
+-- | As with 'get', but require at least @n@ tokens in the input we
+--   receive.
+getAtLeast :: (ParseInput s) => Int -> Parser e s s
+getAtLeast !n = P $ \ pSt fl sc ->
+     if checkLength n (input pSt)
+        then sc pSt (input pSt)
+        else getAtLeast' n pSt fl sc
+{-# INLINE getAtLeast #-}
+
+checkLength :: (ParseInput s) => Int -> s -> Bool
+checkLength 1  = not . isEmpty
+checkLength !n = (`lengthAtLeast` n)
+{-# INLINE checkLength #-}
+
+-- The un-common case is split off to avoid recursion in getAtLeast, so
+-- that it can be inlined properly.
+getAtLeast' :: (ParseInput s) => Int -> ParseState e s
+               -> (Failure e s   r -> Success e s s r -> Result e s   r)
+getAtLeast' !n pSt fl sc = runP (needMoreInput *> go n) pSt fl sc
+  where
+    go !n' = P $ \ pSt' fl' sc' ->
+      if checkLength n' (input pSt')
+         then sc' pSt' (input pSt')
+         else runP (needMoreInput *> go n') pSt' fl' sc'
+
+-- | Request more input.
+needMoreInput :: (ParseInput s) => Parser e s ()
+needMoreInput = P $ \ pSt fl sc ->
+  if more pSt == Complete
+     then fl pSt NoMoreInputExpected
+     else let fl' pSt' = fl pSt' UnexpectedEndOfInput
+              sc' pSt' = sc pSt' ()
+          in requestInput pSt fl' sc'
+
+-- | Construct a 'Partial' 'Result' with a continuation function that
+--   will use the first provided function if it fails, and the second
+--   if it succeeds.
+--
+--   It is assumed that if this function is called, then @more pSt ==
+--   Incomplete@.
+requestInput :: (ParseInput s) =>
+               ParseState e s
+               -> (ParseState e s -> Result e s r) -- Failure case
+               -> (ParseState e s -> Result e s r) -- Success case
+               -> Result e s r
+requestInput pSt fl sc = Partial partialLog $ \ s ->
+  if LL.null s
+     then fl (pSt { more = Complete })
+     else sc (pSt { input = input pSt `appendStream` s
+                  , add   = add   pSt `LL.append`    s
+                  })
+  where
+    partialLog = createFinalLog (mergedLog pSt) AwaitingInput (input pSt)
 
 -- -----------------------------------------------------------------------------
 -- Utility functions

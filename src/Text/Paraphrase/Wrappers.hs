@@ -104,6 +104,9 @@ instance (Word8Input s) => ParseInput (AsChar8 s) where
   breakWhen f = (second AsChar8) . breakWhen (f . w2c) . unChar8
   {-# INLINE breakWhen #-}
 
+  getStreamLength n = second AsChar8 . getStreamLength n . unChar8
+  {-# INLINE getStreamLength #-}
+
 -- -----------------------------------------------------------------------------
 
 -- | Primarily aimed for better debugging support, this wrapper
@@ -164,6 +167,14 @@ instance (ParseInput s) => ParseInput (ConsumedTokens s) where
                  }
     in (str, ct')
   {-# INLINE breakWhen #-}
+
+  getStreamLength n (CT c s) =
+    let (str,s') = getStreamLength n s
+        ct' = CT { consumed = c + LL.length str
+                 , cStream  = s'
+                 }
+    in (str, ct')
+  {-# INLINE getStreamLength #-}
 
 instance (NFData s) => NFData (ConsumedTokens s) where
   rnf (CT c s) = rnf c `seq` rnf s

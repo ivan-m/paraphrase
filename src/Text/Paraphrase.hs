@@ -37,6 +37,7 @@ module Text.Paraphrase
        , token
        , satisfy
        , satisfyWith
+       , stream
        , endOfInput
        , oneOf
        , bracket
@@ -87,7 +88,6 @@ module Text.Paraphrase
        , module Control.Applicative
        ) where
 
-import Text.Paraphrase.Additional
 import Text.Paraphrase.Errors
 import Text.Paraphrase.Inputs
 import Text.Paraphrase.Types

@@ -214,6 +214,11 @@ class (TokenStream s, BaseStream (Stream s)) => ParseInput s where
   breakWhen = LL.span
   {-# INLINE breakWhen #-}
 
+  getStreamLength :: Int -> s -> (Stream s,s)
+  default getStreamLength :: (Stream s ~ s) => Int -> s -> (s,s)
+  getStreamLength = LL.splitAt
+  {-# INLINE getStreamLength #-}
+
 -- -----------------------------------------------------------------------------
 -- Instances for various concrete types.
 
