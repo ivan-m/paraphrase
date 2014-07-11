@@ -214,6 +214,9 @@ class (TokenStream s, BaseStream (Stream s)) => ParseInput s where
   breakWhen = LL.span
   {-# INLINE breakWhen #-}
 
+  -- | Return the stream containing the first @n@ tokens.  It is safe
+  --   to assume that the length of the current input is @>= n@.
+  --   Default provided for values that are their own Stream.
   getStreamLength :: Int -> s -> (Stream s,s)
   default getStreamLength :: (Stream s ~ s) => Int -> s -> (s,s)
   getStreamLength = LL.splitAt
