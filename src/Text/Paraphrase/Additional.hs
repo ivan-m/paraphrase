@@ -18,16 +18,6 @@ import qualified Data.ListLike       as LL
 
 -- -----------------------------------------------------------------------------
 
--- | Make sure that there are at least @n@ 'Token's available.
-needAtLeast :: (ParseInput s) => Int -> Parser e s ()
-needAtLeast !n = go
-  where
-    go = P $ \ pSt fl sc ->
-      if lengthAtLeast (input pSt) n
-         then sc pSt ()
-         else runP (needMoreInput *> go) pSt fl sc
-{-# INLINE needAtLeast #-}
-
 -- | As with 'get', but require at least @n@ tokens in the input we
 --   receive.
 getAtLeast :: (ParseInput s) => Int -> Parser e s s
