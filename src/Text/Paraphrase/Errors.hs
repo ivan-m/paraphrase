@@ -197,7 +197,7 @@ instance (Eq (TaggedError e s)) => Eq (ParsingErrors e s) where
 instance (Show (TaggedError e s)) => Show (ParsingErrors e s) where
   showsPrec d = showsPrec d . finalError
 
-instance (TokenStream s, NFData s, NFData (Stream s), NFData (Token s), NFData e) => NFData (ParsingErrors e s) where
+instance (NFData (TaggedError e s)) => NFData (ParsingErrors e s) where
   rnf = rnf . completeLog
 
 instance MapError ParsingErrors where
