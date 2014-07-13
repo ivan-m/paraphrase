@@ -419,6 +419,10 @@ instance (ParseInput s) => Alternative (Parser e s) where
   (<|>) = onFailW
   {-# INLINE (<|>) #-}
 
+  -- We can't just wrap commitment once at the top level: if the
+  -- provided parser commits, then we'll never be able to backtrack to
+  -- @pure []@ when we can't parse any more.
+
   many v = many_v <?> "many"
     where
       many_v = some_v <|> pure []
