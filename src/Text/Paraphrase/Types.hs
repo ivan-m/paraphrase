@@ -553,13 +553,11 @@ stream str = do
 -- different branch.  As such, since commit doesn't allow
 -- backtracking, there's no point keeping the additional input around
 -- as it won't get used!.
-commitNoLog :: (ParseInput s) => Parser e s a -> Parser e s a
-commitNoLog p = P $ \ pSt fl sc ->
-  let  pSt' = pSt { add         = mempty
-                  , isCommitted = True
-                  }
-  in runP p pSt' fl sc
-{-# INLINE commitNoLog #-}
+commitState :: (ParseInput s) => ParseState e s -> ParseState e s
+commitState pSt = pSt { add         = LL.empty
+                      , isCommitted = True
+                      }
+{-# INLINE commitState #-}
 
 -- -----------------------------------------------------------------------------
 -- Some basic parsers

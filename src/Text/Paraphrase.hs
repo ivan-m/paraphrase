@@ -106,7 +106,8 @@ import           Data.Monoid         ((<>))
 --   That is, @commit p1 \<|\> p2@ is equivalent to just @p1@ (though
 --   also preventing any other usage of @'<|>'@ that might occur).
 commit :: (ParseInput s) => Parser e s a -> Parser e s a
-commit = addStackTrace Committed . commitNoLog
+commit p = addStackTrace Committed
+                         (P $ \ pSt fl sc -> runP p (commitState pSt) fl sc)
 {-# INLINE commit #-}
 
 -- | A combination of 'failWith' and 'commit': specify a failure that
