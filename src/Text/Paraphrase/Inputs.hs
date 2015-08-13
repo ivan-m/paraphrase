@@ -119,13 +119,6 @@ instance TokenStream PrettyInput where
 instance NFData PrettyInput where
   rnf = liftA2 seq (rnf . pInputs) (rnf . pStream)
 
--- | Orphan instance needed for 'ParseError's instance.
-instance NFData Doc where
-  rnf = rnf . render
-
-instance Eq Doc where
-  (==) = (==) `on` render
-
 -- -----------------------------------------------------------------------------
 
 -- | What we expect all base-level 'ParseInput' values to look like.
