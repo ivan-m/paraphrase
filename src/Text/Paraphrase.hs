@@ -182,6 +182,8 @@ manySatisfy f = go
 
 -- TODO: consider splitting and merging rather than continually
 -- requesting input then re-breaking.
+--
+-- OR: unfoldr to get a list of Streams and then mconcat them.
 
 -- | Parse as many tokens that satisfy the predicate as possible, but
 --   require at least one.  This is a more efficient (and possibly
