@@ -431,4 +431,5 @@ oneOf' = wrapCommitment . go id
             | null errs' = el <> el'
             | otherwise  = logError el (NamedSubLogs errs') s <> el'
           errs' = errs []
+
       in onFailWith go' fsc p

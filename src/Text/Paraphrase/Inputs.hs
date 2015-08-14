@@ -1,5 +1,5 @@
-{-# LANGUAGE ConstraintKinds, DefaultSignatures, FlexibleContexts,
-             TypeFamilies #-}
+{-# LANGUAGE ConstraintKinds, DefaultSignatures, FlexibleContexts, TypeFamilies
+             #-}
 {- |
    Module      : Text.Paraphrase.Inputs
    Description : Defining possible inputs for parsing
@@ -33,14 +33,14 @@ module Text.Paraphrase.Inputs
 
 import Text.Paraphrase.Pretty
 
-import qualified Data.ByteString            as SB
-import qualified Data.ByteString.Lazy       as LB
-import qualified Data.ByteString.Unsafe     as SB
-import qualified Data.Text                  as ST
-import qualified Data.Text.Lazy             as LT
-import qualified Data.Text.Unsafe           as ST
-import           Data.Word                  (Word8)
-import           Text.PrettyPrint.HughesPJ  (Doc, render)
+import qualified Data.ByteString           as SB
+import qualified Data.ByteString.Lazy      as LB
+import qualified Data.ByteString.Unsafe    as SB
+import qualified Data.Text                 as ST
+import qualified Data.Text.Lazy            as LT
+import qualified Data.Text.Unsafe          as ST
+import           Data.Word                 (Word8)
+import           Text.PrettyPrint.HughesPJ (Doc, render)
 
 import           Control.Applicative (liftA2)
 import           Control.DeepSeq     (NFData (rnf))
