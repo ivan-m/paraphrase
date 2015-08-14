@@ -8,6 +8,16 @@
       improve readability in displays and also memory usage of large
       logs.
 
+    - Print intial/final inputs?
+
+    - Not all errors require inputs being stored; e.g. all the ones
+      that take a log (as the internal log will store the input).
+
+    - Get rid of unnecessary backtracking/sub-log errors?  Just
+      because it backtracked right at the beginning doesn't mean we
+      need to know that _now_... can probably re-use the
+      commit-squashing machinery for this.
+
 * Add more inbuilt types to PrettyValue (at the very least all the
   numeric types in the Prelude)
 
@@ -21,6 +31,14 @@
 
     - Need a "chainMany" that keeps running the source parser as it
       needs input (this can then be used for lazy parsers)
+
+    - How can we provide a better error location for chained errors?
+
+        + Have informational messages with initial feeding and
+          additional inputs?
+
+        + Overall error is currently with whatever input has not been
+          fed to chained parser...
 
 * More wrapper inputs:
 
@@ -51,6 +69,8 @@
         + How to deal with wrapper types?  Do we match a Stream or the
           actual type (using `fromStream`?).  The latter would
           probably be preferable for `AsChar8`...
+
+    - Get current input stream (for internal use only).
 
 * Commitment:
 
@@ -87,3 +107,17 @@
       other parsing libraries, etc.
 
 * Is it possible to convert the error type of an actual parser?
+
+* Should we dump oneOf in favour of oneOf'?
+
+    - Can oneOf be improved to avoid chained Backtrack errors?
+
+* Should errors like ListWithTerminator take the resulting error from
+  what they wrap?
+
+    - Generalise this: have a variant of addStackTrace which wraps up
+      a sublog.
+
+    - Shoule ParseError be split up?  Have some kind of
+      ParseErrorLabel type with unary constructors, then ParseError
+      can have one that takes one of these Labels as well as a sublog.
