@@ -24,6 +24,7 @@ module Text.Paraphrase.Errors
   , createFinalLog
   , finalError
   , completeLog
+  , toLog
   , prettyLog
   , prettyLogWith
   , LogVerbosity (..)
@@ -208,6 +209,11 @@ instance MapError ParsingErrors where
 -- | The complete log of errors from parsing.
 completeLog :: ParsingErrors e s -> [TaggedError e s]
 completeLog = DL.toList . liftA2 DL.snoc (getLog . errorLog) finalError
+
+-- | Convert the errors from running a parser into a log to use as a
+--   segment of another parsing log.
+toLog :: ParsingErrors e s -> ParseLog e s
+toLog = PL . liftA2 DL.snoc (getLog . errorLog) finalError
 
 -- | Create a pretty-printed version of the log.
 --
