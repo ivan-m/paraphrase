@@ -238,19 +238,27 @@ successful pSt = Success (getStream $ input pSt)
 {-# INLINE successful #-}
 
 makeState :: (ParseInput s) => Stream s -> More -> ParseState e s
-makeState inp m = PSt { input       = fromStream inp
-                      , add         = mempty
-                      , more        = m
-                      , errLog      = mempty
-                      , isCommitted = False
-                      }
+makeState = makeStateWith fromStream
 {-# INLINE makeState #-}
+
+makeStateWith :: (ParseInput s) => (i -> s) -> i -> More -> ParseState e s
+makeStateWith f inp m = PSt { input       = f inp
+                            , add         = mempty
+                            , more        = m
+                            , errLog      = mempty
+                            , isCommitted = False
+                            }
+{-# INLINE makeStateWith #-}
 
 -- | Run the parser on the provided input, providing the raw 'Result'
 --   value.
 parseInput :: (ParseInput s) => Parser e s a -> Stream s -> Result e s a
-parseInput p inp = runP p (makeState inp Incomplete) failure successful
+parseInput = parseInputWith fromStream
 {-# INLINE parseInput #-}
+
+parseInputWith :: (ParseInput s) => (i -> s) -> Parser e s a -> i -> Result e s a
+parseInputWith f p inp = runP p (makeStateWith f inp Incomplete) failure successful
+{-# INLINE parseInputWith #-}
 
 -- | Run the specified parser using the input provided by the first
 --   monadic action.  If additional input is required the second
@@ -262,11 +270,18 @@ parseInput p inp = runP p (makeState inp Incomplete) failure successful
 --   input source.
 parseAndFeed :: (ParseInput s, Monad m) => Parser e s a
                 -> m (Stream s) -> m (Stream s) -> m (EitherResult e s a, Stream s)
-parseAndFeed p minp madd = minp >>= go (parseInput p)
+parseAndFeed = parseAndFeedWith fromStream
+
+-- Unless we want to change the type of Partial - which probably isn't
+-- a good idea: feeders of additional input should only provide the
+-- raw Stream without any wrappers - then the additional provider must
+-- still produce a Stream value.
+parseAndFeedWith :: (ParseInput s, Monad m) => (i -> s) -> Parser e s a
+                    -> m i -> m (Stream s) -> m (EitherResult e s a, Stream s)
+parseAndFeedWith f p minp madd = minp >>= go . parseInputWith f p
   where
-    go withInp inp = case withInp inp of
-                       Partial _pl prt -> madd >>= go prt
-                       res             -> return (resultToEither res)
+    go (Partial _pl prt) = madd >>= go . prt
+    go res               = return (resultToEither res)
 
 -- | Run a parser.
 runParser :: (ParseInput s) => Parser e s a -> Stream s
