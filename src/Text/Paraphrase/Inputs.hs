@@ -158,7 +158,8 @@ class (TokenStream s, BaseStream (Stream s)) => ParseInput s where
   -- | Add new @Stream@ value to the front.  Default provided for
   --   values that are their own Stream.
   --
-  --   This is used by the 'reparse' combinator.
+  --   This is used by the 'reparse' combinator and for parser
+  --   chaining.
   prependStream :: Stream s -> s -> s
   default prependStream :: (Stream s ~ s) => s -> s -> s
   prependStream = LL.append
