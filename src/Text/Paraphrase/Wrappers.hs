@@ -86,6 +86,9 @@ instance (Word8Input s) => ParseInput (AsChar8 s) where
   fromStream = AsChar8 . fromStream
   {-# INLINE fromStream #-}
 
+  extractCurrentStream = second AsChar8 . extractCurrentStream . unChar8
+  {-# INLINE extractCurrentStream #-}
+
   prependStream s = AsChar8 . (prependStream s) . unChar8
   {-# INLINE prependStream #-}
 
@@ -142,6 +145,14 @@ instance (ParseInput s) => ParseInput (ConsumedTokens s) where
 
   fromStream = createCT . fromStream
   {-# INLINE fromStream #-}
+
+  extractCurrentStream (CT c s) =
+    let (str,s') = extractCurrentStream s
+        ct' = CT { consumed = c + LL.length str
+                 , cStream  = s'
+                 }
+    in (str,ct')
+  {-# INLINE extractCurrentStream #-}
 
   prependStream str (CT c s) = CT { consumed = c - LL.length str
                                   , cStream  = str `prependStream` s

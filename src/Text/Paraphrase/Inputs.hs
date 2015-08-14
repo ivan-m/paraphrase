@@ -155,6 +155,19 @@ class (TokenStream s, BaseStream (Stream s)) => ParseInput s where
   fromStream = id
   {-# INLINE fromStream #-}
 
+  -- | Get (as in consume) the current stream and set the stream in
+  --   the input to @'LL.empty'@.  Default provided for values that
+  --   are their own Stream.
+  --
+  --   This is used for parser chaining.
+  --
+  --   This differs from @\ s -> (getStream s, fromStream 'LL.empty')
+  --   in cases where something stateful is stored in the input.
+  extractCurrentStream :: s -> (Stream s,s)
+  default extractCurrentStream :: (Stream s ~ s) => s -> (s,s)
+  extractCurrentStream = flip (,) LL.empty
+  {-# INLINE extractCurrentStream #-}
+
   -- | Add new @Stream@ value to the front.  Default provided for
   --   values that are their own Stream.
   --
