@@ -559,10 +559,6 @@ stream str = do
 -- -----------------------------------------------------------------------------
 -- Commitment
 
--- For internal use only (as it's used in the definitions of many and
--- some, and we want to cut down on noise).  See 'commit' from
--- Text.Paraphrase instead.
---
 -- Note that we only keep the additional input around in case we
 -- backtrack and need to restore what was added when going to a
 -- different branch.  As such, since commit doesn't allow
